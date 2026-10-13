@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# ForceCommand du compte ai-github : n'autorise que `infra preview up|down <projet> <pr> [--url]`.
+set -euo pipefail
+read -r -a argv <<< "${SSH_ORIGINAL_COMMAND:-}"
+[ "${argv[0]:-}" = "infra" ] && [ "${argv[1]:-}" = "preview" ] && [[ "${argv[2]:-}" =~ ^(up|down)$ ]] \
+  && [[ "${argv[3]:-}" =~ ^[a-z0-9-]+$ ]] && [[ "${argv[4]:-}" =~ ^[0-9]+$ ]] \
+  || { echo "commande refusée" >&2; exit 126; }
+exec /usr/local/bin/infra preview "${argv[2]}" "${argv[3]}" "${argv[4]}" ${argv[5]:+"${argv[5]}"}

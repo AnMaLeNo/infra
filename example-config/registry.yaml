@@ -1,0 +1,42 @@
+projects:
+  catacombes:
+    repo: https://github.com/AnMaLeNo/catacombes
+    enabled: true
+    service: compose
+    expose: public
+    domain: catacombes
+    container: web
+    port: 8420
+
+  fan-controller:
+    repo: https://github.com/AnMaLeNo/fan_controller
+    enabled: true
+    service: compose
+    expose: private
+    container: frontend
+    port: 80
+    needs: [mosquitto]
+    env: true
+
+  site-client:
+    repo: https://github.com/AnMaLeNo/site-naturopathe-fb
+    enabled: true
+    service: static
+    build: "npm ci && npm run build"
+    static_dir: dist
+    expose: public
+    domain: naturo
+    previews: public
+
+  unused:
+    repo: https://github.com/AnMaLeNo/Unused
+    enabled: true
+    service: compose
+    expose: none
+    env: true
+
+  immich:
+    repo: https://github.com/immich-app/immich
+    enabled: false
+    service: compose
+    expose: private

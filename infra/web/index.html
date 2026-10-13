@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>infra</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --fg:#e6e6e6; --muted:#8b93a5; --ok:#3fb950; --ko:#f85149; --warn:#d29922; --acc:#58a6ff; }
+  * { box-sizing:border-box } body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--fg) }
+  header { display:flex; gap:16px; align-items:baseline; padding:14px 20px; border-bottom:1px solid var(--line) }
+  header h1 { margin:0; font-size:18px } header .muted { color:var(--muted) }
+  main { display:grid; grid-template-columns: 1fr 380px; gap:16px; padding:16px 20px }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px }
+  table { width:100%; border-collapse:collapse } th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top }
+  th { color:var(--muted); font-weight:500 }
+  .tag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:12px; border:1px solid var(--line); color:var(--muted) }
+  .tag.public { color:var(--ok); border-color:var(--ok) } .tag.private { color:var(--acc); border-color:var(--acc) } .tag.none { color:var(--muted) }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; background:var(--muted) }
+  .dot.ok { background:var(--ok) } .dot.ko { background:var(--ko) } .dot.pending { background:var(--warn) }
+  a { color:var(--acc); text-decoration:none } a:hover { text-decoration:underline }
+  button { background:#21262d; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer }
+  button.primary { background:#238636; border-color:#2ea043 } button.danger { color:var(--ko) }
+  input, select, textarea { width:100%; background:#0d1117; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit }
+  label { display:block; color:var(--muted); font-size:12px; margin:8px 0 2px }
+  .row { display:flex; gap:8px } .row > * { flex:1 }
+  pre { background:#0d1117; border:1px solid var(--line); border-radius:6px; padding:10px; overflow:auto; max-height:360px; font-size:12px }
+  .muted { color:var(--muted) } .right { text-align:right }
+  dialog { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:8px; width:min(560px, 95vw) }
+  dialog::backdrop { background:rgba(0,0,0,.6) }
+  .help { font-size:12px; color:var(--muted); margin-top:4px }
+</style>
+</head>
+<body>
+<header>
+  <h1>infra</h1>
+  <span class="muted" id="hostinfo">…</span>
+  <span style="flex:1"></span>
+  <button class="primary" onclick="openEditor()">+ Ajouter un projet</button>
+</header>
+<main>
+  <section class="panel">
+    <table>
+      <thead><tr><th></th><th>Projet</th><th>Service</th><th>Expose</th><th>Previews</th><th>URLs</th><th>Dernier run</th><th></th></tr></thead>
+      <tbody id="projects"></tbody>
+    </table>
+    <p class="help">Modifier une entrée écrit <code>registry.yaml</code> ; le runner sur l'hôte détecte le changement et lance <code>claude -p</code> avec les skills du projet. Le point : vert = appliqué, orange = en attente du runner, rouge = dernier run en échec.</p>
+  </section>
+  <aside class="panel">
+    <h3 style="margin-top:0">Runs</h3>
+    <table><tbody id="runs"></tbody></table>
+    <pre id="rundetail" class="muted">Clique sur un run pour voir sa sortie.</pre>
+  </aside>
+</main>
+
+<dialog id="editor">
+  <form method="dialog" onsubmit="return saveProject(event)">
+    <h3 id="edtitle" style="margin-top:0">Projet</h3>
+    <label>Nom <span class="muted">(a-z0-9-)</span></label><input id="f_name" required pattern="[a-z0-9][a-z0-9-]*">
+    <label>Repo GitHub</label><input id="f_repo" required placeholder="https://github.com/…">
+    <div class="row">
+      <div><label>Service</label><select id="f_service"><option>compose</option><option>static</option></select></div>
+      <div><label>Expose</label><select id="f_expose"><option>none</option><option>private</option><option>public</option></select></div>
+      <div><label>Previews</label><select id="f_previews"><option>none</option><option>private</option><option>public</option></select></div>
+    </div>
+    <div class="row">
+      <div><label>Domaine <span class="muted">(un label)</span></label><input id="f_domain" placeholder="= nom"></div>
+      <div><label>Container</label><input id="f_container" placeholder="service compose HTTP"></div>
+      <div><label>Port interne</label><input id="f_port" type="number" min="1" max="65535"></div>
+    </div>
+    <div class="row">
+      <div><label>Branche / ref</label><input id="f_ref" value="main"></div>
+      <div><label>Needs <span class="muted">(stacks, séparées par ,)</span></label><input id="f_needs" placeholder="mosquitto"></div>
+    </div>
+    <div class="row">
+      <div><label>Activé</label><select id="f_enabled"><option value="true">oui</option><option value="false">non</option></select></div>
+      <div><label>Secrets .env</label><select id="f_env"><option value="false">non</option><option value="true">oui — secrets/projects/&lt;nom&gt;.env</option></select></div>
+    </div>
+    <label>Notes</label><textarea id="f_notes" rows="2"></textarea>
+    <p class="help">Les secrets ne se saisissent pas ici : <code>infra secrets edit projects/&lt;nom&gt;.env</code> (sops). Minimum : repo + expose.</p>
+    <div class="row" style="margin-top:12px">
+      <button type="button" class="danger" id="btn_delete" onclick="deleteProject()">Supprimer du registre</button>
+      <span></span>
+      <button type="button" onclick="editor.close()">Annuler</button>
+      <button class="primary" type="submit">Enregistrer</button>
+    </div>
+    <p id="ederr" style="color:var(--ko)"></p>
+  </form>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+let editing = null;
+async function api(path, opts) { const r = await fetch(path, opts); if (!r.ok) throw new Error(await r.text()); return r.headers.get('content-type')?.includes('json') ? r.json() : r.text(); }
+
+async function load() {
+  const [h, projects, runs] = await Promise.all([api('/api/host'), api('/api/projects'), api('/api/runs?limit=30')]);
+  $('#hostinfo').textContent = `${h.name} · ${h.tailscale_ip} · privé *.${h.private_zone} · public ${h.public_ingress} · v${h.version}`;
+  $('#projects').innerHTML = Object.entries(projects).map(([name, p]) => {
+    const e = p.entry, dot = !p.applied ? 'pending' : (p.last_ok ? 'ok' : 'ko');
+    const urls = Object.entries(p.urls).map(([k, u]) => `<a href="${u}" target="_blank">${u.replace('https://','')}</a>`).join('<br>');
+    return `<tr>
+      <td><span class="dot ${dot}" title="${p.applied ? (p.last_ok ? 'appliqué' : 'dernier run en échec') : 'en attente du runner'}"></span></td>
+      <td><b>${name}</b>${e.enabled ? '' : ' <span class="tag">désactivé</span>'}<br><a class="muted" href="${e.repo}" target="_blank">${e.repo.replace('https://github.com/','')}</a></td>
+      <td>${e.service}</td><td><span class="tag ${e.expose}">${e.expose}</span></td><td>${e.previews === 'none' ? '—' : `<span class="tag ${e.previews}">${e.previews}</span>`}</td>
+      <td>${urls || '—'}</td>
+      <td class="muted">${p.last_at ? new Date(p.last_at).toLocaleString('fr-FR') : '—'}</td>
+      <td class="right"><button onclick='openEditor(${JSON.stringify(name)}, ${JSON.stringify(e)})'>Modifier</button></td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="muted">Aucun projet. Ajoute-en un.</td></tr>';
+  $('#runs').innerHTML = runs.map(r => `<tr onclick="showRun('${r.file}')" style="cursor:pointer">
+      <td><span class="dot ${r.ok ? 'ok' : 'ko'}"></span>${r.project}${r.dry ? ' <span class="tag">dry</span>' : ''}</td>
+      <td class="muted">${new Date(r.started).toLocaleString('fr-FR')}</td>
+      <td class="muted right">${r.cost_usd ? r.cost_usd.toFixed(2) + ' $' : ''}</td></tr>`).join('') || '<tr><td class="muted">Aucun run.</td></tr>';
+}
+async function showRun(f) { $('#rundetail').textContent = await api('/api/runs/' + f); $('#rundetail').classList.remove('muted'); }
+
+function openEditor(name, e) {
+  editing = name || null; e = e || {};
+  $('#edtitle').textContent = name ? `Modifier ${name}` : 'Nouveau projet';
+  $('#f_name').value = name || ''; $('#f_name').disabled = !!name;
+  $('#f_repo').value = e.repo || ''; $('#f_service').value = e.service || 'compose'; $('#f_expose').value = e.expose || 'private';
+  $('#f_previews').value = e.previews || 'none'; $('#f_domain').value = e.domain || ''; $('#f_container').value = e.container || '';
+  $('#f_port').value = e.port ?? ''; $('#f_ref').value = e.ref || 'main'; $('#f_needs').value = (e.needs || []).join(',');
+  $('#f_enabled').value = String(e.enabled ?? true); $('#f_env').value = String(e.env ?? false); $('#f_notes').value = e.notes || '';
+  $('#btn_delete').style.visibility = name ? 'visible' : 'hidden'; $('#ederr').textContent = '';
+  editor.showModal();
+}
+async function saveProject(ev) {
+  ev.preventDefault();
+  const name = $('#f_name').value.trim();
+  const body = { repo: $('#f_repo').value.trim(), service: $('#f_service').value, expose: $('#f_expose').value, previews: $('#f_previews').value,
+    domain: $('#f_domain').value.trim() || null, container: $('#f_container').value.trim() || null,
+    port: $('#f_port').value ? Number($('#f_port').value) : null, ref: $('#f_ref').value.trim() || 'main',
+    needs: $('#f_needs').value.split(',').map(s => s.trim()).filter(Boolean), enabled: $('#f_enabled').value === 'true',
+    env: $('#f_env').value === 'true', notes: $('#f_notes').value };
+  try { await api('/api/projects/' + name, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); editor.close(); load(); }
+  catch (e) { $('#ederr').textContent = e.message; }
+  return false;
+}
+async function deleteProject() {
+  if (!editing || !confirm(`Retirer ${editing} du registre ? (le runner l'arrêtera ; les données restent)`)) return;
+  await api('/api/projects/' + editing, { method: 'DELETE' }); editor.close(); load();
+}
+load(); setInterval(load, 10000);
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+creation_rules:
+  - path_regex: ^secrets/.*
+    age: >-
+      age1hostkeyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,
+      age1humankeyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

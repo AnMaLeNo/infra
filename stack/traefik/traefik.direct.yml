@@ -1,0 +1,53 @@
+# Hôte avec IP publique (VPS) : privé via Tailscale, public directement sur 80/443.
+entryPoints:
+  tailnet-http:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: tailnet
+          scheme: https
+  tailnet:
+    address: ":443"
+    http:
+      tls:
+        certResolver: cf
+        domains:
+          - main: "{{ env `PRIVATE_ZONE` }}"
+            sans: ["*.{{ env `PRIVATE_ZONE` }}"]
+  web:
+    address: ":8080"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":8443"
+    http:
+      tls:
+        certResolver: cf
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: traefik-net
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  cf:
+    acme:
+      email: "{{ env `ACME_EMAIL` }}"
+      storage: /acme.json
+      dnsChallenge:
+        provider: cloudflare
+        resolvers: ["1.1.1.1:53", "1.0.0.1:53"]
+
+api:
+  dashboard: true
+
+log:
+  level: INFO
+accessLog: {}

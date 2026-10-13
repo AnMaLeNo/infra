@@ -1,0 +1,16 @@
+# Décrit le serveur. Un repo de config = un serveur.
+name: pi                                 # nom court, aussi nom du tunnel Cloudflare
+tailscale_ip: 100.72.6.43                # `tailscale ip -4` ; les entrypoints privés de Traefik écoutent ici
+public_zone: antoine42.com               # zone Cloudflare
+private_zone: pi.antoine42.com           # *.pi.antoine42.com → tailscale_ip
+public_ingress: cloudflare-tunnel        # cloudflare-tunnel | direct (VPS avec IP publique)
+public_ip: null                          # requis si direct
+cloudflare:
+  zone_id: ""                            # rempli par `infra tunnel create` / `infra dns bootstrap`
+  account_id: ""
+  tunnel_id: ""
+stacks: [traefik, cloudflared, ui, mosquitto]
+exceptions:                              # ce qui ne tourne pas en Docker, et pourquoi
+  - name: infra-runner
+    reason: lance `claude -p` avec la session Claude de l'hôte et pilote docker/systemd
+notes: ""

@@ -1,0 +1,40 @@
+# Workflow réutilisable appelé depuis le repo d'un projet (voir skills/previews/SKILL.md).
+# Secrets attendus côté projet : TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET, INFRA_HOST (IP Tailscale), INFRA_SSH_KEY (clé de ai-github).
+name: preview
+on:
+  workflow_call:
+    inputs:
+      project: { required: true, type: string }
+    secrets:
+      TS_OAUTH_CLIENT_ID: { required: true }
+      TS_OAUTH_SECRET: { required: true }
+      INFRA_HOST: { required: true }
+      INFRA_SSH_KEY: { required: true }
+concurrency:
+  group: preview-${{ inputs.project }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, pull-requests: write }
+    steps:
+      - uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - name: ssh key
+        run: |
+          mkdir -p ~/.ssh && echo "${{ secrets.INFRA_SSH_KEY }}" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.INFRA_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: up / down
+        id: deploy
+        run: |
+          ACTION=up; [ "${{ github.event.action }}" = "closed" ] && ACTION=down
+          URL=$(ssh ai-github@${{ secrets.INFRA_HOST }} infra preview $ACTION ${{ inputs.project }} ${{ github.event.pull_request.number }} --url)
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"; echo "url=$URL" >> "$GITHUB_OUTPUT"
+      - uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: preview
+          message: |
+            ${{ steps.deploy.outputs.action == 'up' && format('Preview : {0}', steps.deploy.outputs.url) || 'Preview supprimée.' }}

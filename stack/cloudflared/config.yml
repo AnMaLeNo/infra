@@ -1,0 +1,12 @@
+# Tunnel géré localement : cette config est la source de vérité (pas le dashboard).
+# Une seule règle : tout hostname dont le CNAME pointe sur ce tunnel arrive sur Traefik,
+# qui route par Host(). Rendre une app publique = créer son CNAME (infra dns ensure).
+tunnel: ${TUNNEL_ID}
+credentials-file: /etc/cloudflared/credentials.json
+no-autoupdate: true
+
+ingress:
+  - service: http://traefik:8080
+    originRequest:
+      httpHostHeader: ""        # conserve le Host d'origine
+      noTLSVerify: false

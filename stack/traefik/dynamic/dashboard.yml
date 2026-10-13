@@ -1,0 +1,9 @@
+# Dashboard Traefik, privé uniquement : https://traefik.<private_zone>
+http:
+  routers:
+    traefik-dashboard:
+      rule: "Host(`traefik.{{ env `PRIVATE_ZONE` }}`)"
+      entryPoints: [tailnet]
+      service: api@internal
+      tls:
+        certResolver: cf

@@ -1,0 +1,27 @@
+services:
+  traefik:
+    image: traefik:v3.3
+    container_name: traefik
+    restart: unless-stopped
+    environment:
+      CF_DNS_API_TOKEN: ${CF_API_TOKEN}
+      PRIVATE_ZONE: ${PRIVATE_ZONE}
+      ACME_EMAIL: ${ACME_EMAIL}
+    command:
+      - --configFile=/etc/traefik/traefik.${PUBLIC_INGRESS}.yml
+    ports:
+      # privé : uniquement sur l'IP Tailscale. L'entrypoint `tunnel` (:8080) n'est PAS publié.
+      - "${TAILSCALE_IP}:443:443"
+      - "${TAILSCALE_IP}:80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.cloudflare-tunnel.yml:/etc/traefik/traefik.cloudflare-tunnel.yml:ro
+      - ./traefik.direct.yml:/etc/traefik/traefik.direct.yml:ro
+      - ./dynamic:/etc/traefik/dynamic:ro
+      - ${STACK_STATE}/acme.json:/acme.json
+    networks:
+      - traefik-net
+
+networks:
+  traefik-net:
+    external: true

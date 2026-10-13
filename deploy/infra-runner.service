@@ -1,0 +1,18 @@
+[Unit]
+Description=infra runner — applique registry.yaml via claude -p
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ai-infra
+Group=infra
+Environment=INFRA_CONFIG_DIR=@CONFIG_DIR@
+Environment=SOPS_AGE_KEY_FILE=@CONFIG_DIR@/.age-key
+WorkingDirectory=@CONFIG_DIR@
+ExecStart=/usr/local/bin/infra watch
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

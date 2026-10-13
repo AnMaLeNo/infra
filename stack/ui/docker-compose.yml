@@ -1,0 +1,26 @@
+# Front + API de l'outil. Déployé comme un projet interne « infra » en expose: private.
+services:
+  ui:
+    image: ghcr.io/anmaleno/infra:${INFRA_VERSION}
+    container_name: infra-ui
+    restart: unless-stopped
+    command: infra serve --host 0.0.0.0 --port 8000
+    environment:
+      INFRA_CONFIG_DIR: /srv/infra
+    volumes:
+      - /srv/infra:/srv/infra          # lit host.yaml/registry.yaml, écrit registry.yaml + runs/
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # lecture seule : infra status
+    networks:
+      - traefik-net
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-net
+      - traefik.http.routers.infra-private.rule=Host(`infra.${PRIVATE_ZONE}`)
+      - traefik.http.routers.infra-private.entrypoints=tailnet
+      - traefik.http.routers.infra-private.tls=true
+      - traefik.http.routers.infra-private.tls.certresolver=cf
+      - traefik.http.services.infra.loadbalancer.server.port=8000
+
+networks:
+  traefik-net:
+    external: true
