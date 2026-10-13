@@ -69,3 +69,14 @@ def test_skills_resolution(env):
 def test_set_project_fields(env):
     config.set_project_fields("catacombes", port=9000, notes="x")
     assert config.project("catacombes").port == 9000
+
+
+def test_baseline_then_plan_empty(env):
+    from infra import runner
+    state = runner.load_state()
+    assert runner.diff(state)                     # tout est « à appliquer » au départ
+    for n, prj in config.registry().projects.items():
+        runner.mark_applied(state, n, prj, ok=True)
+    assert runner.diff(runner.load_state()) == []
+    config.set_project_fields("catacombes", port=1)
+    assert [n for n, _ in runner.diff(runner.load_state())] == ["catacombes"]

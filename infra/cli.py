@@ -209,6 +209,18 @@ def watch(interval: float = 5.0, once: bool = False, dry: bool = False):
 
 @app.command()
 @_main_guard
+def baseline(name: str | None = typer.Argument(None, help="un projet, sinon tous")):
+    """Marque les entrées du registre comme déjà appliquées, sans lancer de run (adoption d'un hôte existant)."""
+    reg = config.registry()
+    state = runner.load_state()
+    names = [name] if name else list(reg.projects)
+    for n in names:
+        runner.mark_applied(state, n, config.project(n), ok=True)
+    _out({"baseline": names})
+
+
+@app.command()
+@_main_guard
 def plan():
     """Projets dont l'entrée du registre a changé depuis le dernier run."""
     changes = runner.diff(runner.load_state())
