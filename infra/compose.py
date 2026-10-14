@@ -1,7 +1,7 @@
 """Opérations git + docker compose sur une cible (projet ou preview)."""
 from __future__ import annotations
 
-from .render import Target, render
+from .render import Target
 from .util import run, run_json
 
 
@@ -81,10 +81,3 @@ def status(t: Target) -> dict:
         if t.repo_dir.exists() else None,
     }
 
-
-def apply(t: Target) -> dict:
-    """fetch + render + up. Idempotent : compose ne redémarre que ce qui a changé."""
-    commit = fetch(t)
-    render(t)
-    up(t)
-    return {"commit": commit, **status(t)}

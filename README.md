@@ -7,19 +7,19 @@ Outil générique pour déployer des projets GitHub sur **un** serveur (Raspberr
 ## Idée
 
 - Un **repo de config privé** (ex. `infra-raspberry-pi`) décrit *l'état voulu* du serveur : `host.yaml` (le serveur), `registry.yaml` (les projets : repo GitHub + comment les exposer), `secrets/` (chiffrés sops+age), `skills/` (skills custom). Il embarque cet outil comme sous-module `tool/` épinglé sur une version.
-- L'outil fournit : la **stack d'infra** (Traefik, Cloudflare Tunnel, UI), le **CLI `infra`** (actions mécaniques et idempotentes), des **skills** (modes d'emploi pour le LLM) et le **runner** qui lance `claude -p` avec les bons skills à chaque changement de config.
+- **C'est un LLM qui déploie.** À chaque changement de `registry.yaml`, le runner lance `claude -p` avec l'objectif (l'entrée modifiée), les skills correspondants (but + état cible + conventions, pas des procédures) et un serveur **MCP** de petits tools atomiques. Claude choisit le chemin, lit le repo du projet, écrit ce qui manque, lance `docker compose`, vérifie. Il n'y a volontairement **pas** de commande « déploie tout » déterministe : un projet sans Dockerfile, un cas tordu, une erreur de build sont des situations normales que l'agent gère.
+- Les tools MCP (`infra mcp`) sont des raccourcis fiables pour les gestes répétitifs qu'on ne veut pas voir réinventés : synchroniser un repo au bon endroit, générer l'override compose (ports neutralisés, labels Traefik, réseau), déchiffrer un `.env`, créer un enregistrement DNS, lire l'état. Chacun fait **une** chose et échoue clairement quand il ne s'applique pas ; l'agent fait alors autrement, à la main. On en ajoute au fil de l'usage, à partir de ce que les runs ont dû faire manuellement.
 - Chaque serveur a son propre clone. L'outil ne gère **que** le serveur où il tourne.
 
 ```
 registry.yaml modifié (UI web ou git push)
         │
         ▼
- runner : détecte le diff par projet
-        │   → choisit les skills : skills/service/<service>, skills/expose/<expose>, skills/previews…
+ runner (infra watch) : détecte le diff par projet, choisit les skills
+        │   skills/service/<service>, skills/expose/<expose>, skills/previews, skills/migrate-legacy…
         ▼
- claude -p  "Applique le projet X" + SKILL.md
-        │   → lit l'état réel (infra status), fait le nécessaire via le CLI (infra apply…),
-        │     corrige ce qui n'est pas mécanique (port à deviner, build qui casse…)
+ claude -p  « amène le projet X à l'état voulu »  + SKILL.md  + MCP `infra`
+        │   → constate l'état réel, fait le nécessaire (tools MCP, docker compose, git, PR si besoin), vérifie
         ▼
  Traefik route  https://<domain>.<private_zone>  (Tailscale)   et/ou
                 https://<domain>.<public_zone>   (Cloudflare Tunnel → Traefik)
@@ -65,7 +65,7 @@ skills/               1 SKILL.md par opération, écrits pour un LLM
   expose/{none,private,public}/   service/{compose,static}/   previews/   undeploy/
   bootstrap-host/   agent-account/   secrets/   migrate-legacy/
 stack/                compose des services d'infra : traefik/, cloudflared/, ui/, mosquitto/
-infra/                le CLI + API + runner (Python)
+infra/                CLI, serveur MCP (`infra mcp`), API/UI, runner (Python)
 example-config/       à quoi ressemble un repo de config
 install.sh            installation de l'outil sur un hôte déjà bootstrappé
 ```

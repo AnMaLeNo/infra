@@ -20,7 +20,7 @@ import yaml
 from . import config, paths, secrets, skills
 from .models import Project
 
-ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep"
+ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,mcp__infra"
 
 
 def _hash(prj: Project | None) -> str:
@@ -36,24 +36,30 @@ def build_prompt(name: str, prj: Project | None, previous: dict | None) -> str:
     if missing:
         raise RuntimeError(f"skills introuvables : {missing} (ni dans <config>/skills ni dans tool/skills)")
     tool = paths.tool_dir()
+    after = yaml.safe_dump({name: prj.model_dump(exclude_defaults=True)} if prj else {name: None}, sort_keys=False).strip()
+    before = yaml.safe_dump({name: previous} if previous else {name: None}, sort_keys=False).strip()
     lines = [
-        f"Tu es le runner de l'outil `infra` sur l'hôte `{h.name}`. Répertoire courant : {paths.config_dir()} (repo de config).",
-        f"Lis d'abord {tool / 'README.md'} et {tool / 'docs/conventions.md'}.",
-        f"Projet concerné : `{name}`.",
+        f"Tu es l'agent de déploiement de l'hôte `{h.name}` (outil `infra`). Répertoire courant : {paths.config_dir()} (repo de config).",
+        f"Contexte à lire d'abord : {tool / 'README.md'} puis {tool / 'docs/conventions.md'}.",
         "",
-        "Entrée du registre AVANT :",
-        "```yaml", yaml.safe_dump({name: previous} if previous else {name: None}, sort_keys=False).strip(), "```",
-        "Entrée du registre APRÈS (état voulu) :",
-        "```yaml", yaml.safe_dump({name: prj.model_dump(exclude_defaults=True)} if prj else {name: None}, sort_keys=False).strip(), "```",
+        f"Objectif : amener le projet `{name}` à l'état voulu ci-dessous. Tu as carte blanche sur le chemin ;",
+        "les skills décrivent le but et l'état cible à atteindre, pas une procédure.",
         "",
-        "Applique l'état voulu en suivant EXACTEMENT ces skills, dans l'ordre :",
+        "Entrée du registre AVANT :", "```yaml", before, "```",
+        "Entrée du registre APRÈS (état voulu) :", "```yaml", after, "```",
+        "",
+        "Skills à satisfaire :",
         *[f"- {rel} → {p}" for rel, p in sk.items()],
         "",
-        "Règles : commence par `infra status " + name + "` ; n'agis que sur l'écart ; utilise le CLI `infra` pour tout ce qui est mécanique ;",
-        "ne modifie jamais un fichier généré ; ne publie jamais de port ; n'affiche jamais la valeur d'un secret ;",
-        "si une information manque (port, container, variable d'env), déduis-la depuis le code du projet et fixe-la via `infra set`,",
-        "sinon termine en échec avec la question précise à poser à l'humain.",
-        "Termine par un résumé : ce qui a été fait, les URLs, ce qu'il reste à faire par un humain.",
+        "Tu disposes du serveur MCP `infra` (tools atomiques : repo_sync, compose_override, traefik_labels, env_decrypt,",
+        "dns_ensure/dns_prune/dns_list, registry_get/registry_set, project_status, host_info, secrets_keys…) et de Bash",
+        "(docker compose, git, curl, sudo limité). Les tools sont des raccourcis fiables pour les gestes répétitifs ; si l'un",
+        "ne convient pas au projet, il te le dira : fais alors autrement, à la main, et dis-le dans ton résumé.",
+        "",
+        "Règles : commence par constater l'état réel (project_status) et n'agis que sur l'écart ; ne publie jamais de port ;",
+        "n'affiche jamais la valeur d'un secret ; n'invente pas de valeur manquante (termine en échec avec la question précise) ;",
+        "ne modifie pas le repo du projet sauf cas prévu par un skill (PR). Termine par un résumé : ce qui a été fait,",
+        "les URLs, ce que tu as dû faire à la main (candidats à devenir des tools), ce qu'il reste à un humain.",
     ]
     return "\n".join(lines)
 
@@ -77,8 +83,12 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
     ienv = secrets.infra_env()
     if "CLAUDE_CODE_OAUTH_TOKEN" in ienv and "CLAUDE_CODE_OAUTH_TOKEN" not in env:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = ienv["CLAUDE_CODE_OAUTH_TOKEN"]
+    mcp_cfg = paths.runs_dir() / ".mcp.json"
+    mcp_cfg.parent.mkdir(parents=True, exist_ok=True)
+    mcp_cfg.write_text(json.dumps({"mcpServers": {"infra": {"command": shutil.which("infra") or "infra", "args": ["mcp"],
+                                                             "env": {"INFRA_CONFIG_DIR": str(paths.config_dir())}}}}))
     cmd = [claude_bin(), "-p", prompt, "--output-format", "json", "--allowedTools", ALLOWED_TOOLS,
-           "--permission-mode", "acceptEdits"]
+           "--permission-mode", "acceptEdits", "--mcp-config", str(mcp_cfg), "--strict-mcp-config"]
     cp = subprocess.run(cmd, check=False, cwd=paths.config_dir(), env=env, text=True, capture_output=True)
     secret_values = list(ienv.values())
     try:

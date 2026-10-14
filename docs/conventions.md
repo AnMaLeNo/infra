@@ -11,7 +11,7 @@ Tout ce qui est écrit ici est **la** façon de faire. Si un skill ou un projet 
 | `/srv/infra/.age-key` | clé privée age (0400, `ai-infra`) | **non** — gestionnaire de mots de passe |
 | `/srv/infra/runs/` | journaux des runs du LLM (`<date>-<projet>.json`) | non |
 | `/srv/apps/<projet>/repo/` | clone du repo du projet, sur `ref` | non (c'est un clone) |
-| `/srv/apps/<projet>/compose.override.yml` | généré par `infra render` — **ne jamais éditer à la main** | non |
+| `/srv/apps/<projet>/compose.override.yml` | généré par le tool `compose_override` (ou écrit à la main par l'agent si le tool ne s'applique pas, en le signalant) | non |
 | `/srv/apps/<projet>/.env` | déchiffré depuis `secrets/projects/<projet>.env` (0600) | non |
 | `/srv/apps/<projet>/previews/pr-<N>/` | idem pour une preview | non |
 | `/srv/data/<projet>/` | données persistantes (bind mounts) — c'est ce qu'on sauvegarde | non |
@@ -24,7 +24,7 @@ Tout ce qui est écrit ici est **la** façon de faire. Si un skill ou un projet 
 - Tout tourne en Docker Compose. Exceptions autorisées, listées dans `host.yaml: exceptions:` avec une raison (matériel, process qui lance `claude`…).
 - Nom de projet compose = nom du projet dans le registre (`docker compose -p <projet>`). Previews : `<projet>-pr-<N>`.
 - Réseau partagé : `traefik-net` (externe, créé au bootstrap). Seul le service `container` du projet le rejoint.
-- **Aucun `ports:` publié** par les projets. `infra render` les neutralise (`ports: !reset []`). Si un projet a vraiment besoin d'un port (UDP, protocole non HTTP), il le déclare dans `expose_ports:` et le port est lié à l'IP Tailscale uniquement.
+- **Aucun `ports:` publié** par les projets. Le tool `compose_override` les neutralise (`ports: !reset []`). Si un projet a vraiment besoin d'un port (UDP, protocole non HTTP), il le déclare dans `expose_ports:` et le port est lié à l'IP Tailscale uniquement.
 - Les volumes nommés sont remplacés par des bind mounts sous `/srv/data/<projet>/` quand les données doivent survivre à un `down -v`.
 - `restart: unless-stopped` partout.
 - Images : tag explicite ou build local ; jamais `latest` dans les stacks d'infra.
@@ -33,7 +33,7 @@ Tout ce qui est écrit ici est **la** façon de faire. Si un skill ou un projet 
 
 - Entrypoints : `tailnet` (`<tailscale_ip>:443`, TLS), `tailnet-http` (`<tailscale_ip>:80`, redirection), `tunnel` (`:8080`, HTTP, **non publié** — joignable uniquement par cloudflared dans `traefik-net`). Hôtes en `public_ingress: direct` (VPS) : `web` (`:80`) et `websecure` (`:443`).
 - Certificats : resolver `cf` = ACME DNS-01 Cloudflare, wildcard `*.<private_zone>` demandé une fois.
-- Labels générés (jamais écrits à la main dans les repos projets) :
+- Labels (tool `traefik_labels`, jamais écrits dans les repos projets) :
   - routeur `<projet>-private` : `Host(\`<domain>.<private_zone>\`)`, entrypoint `tailnet`, tls
   - routeur `<projet>-public` (si `expose: public`) : `Host(\`<domain>.<public_zone>\`)`, entrypoint `tunnel` (ou `websecure` en direct)
   - service `<projet>` : `loadbalancer.server.port=<port>`
@@ -44,9 +44,9 @@ Tout ce qui est écrit ici est **la** façon de faire. Si un skill ou un projet 
 | Enregistrement | Valeur | Qui le crée |
 |---|---|---|
 | `A *.<private_zone>` | `<tailscale_ip>` (non proxied) | bootstrap |
-| `CNAME <domain>.<public_zone>` | `<tunnel_id>.cfargotunnel.com` (proxied) | `infra dns ensure <projet>` |
-| `CNAME *.<domain>.<public_zone>` | idem | `infra dns ensure` si `previews: public` |
-| `A *.<domain>.<private_zone>` | `<tailscale_ip>` | `infra dns ensure` si `previews: private` |
+| `CNAME <domain>.<public_zone>` | `<tunnel_id>.cfargotunnel.com` (proxied) | tool `dns_ensure` |
+| `CNAME *.<domain>.<public_zone>` | idem | `dns_ensure` si `previews: public` |
+| `A *.<domain>.<private_zone>` | `<tailscale_ip>` | `dns_ensure` si `previews: private` |
 
 Rendre un projet public = créer **un** CNAME. Le tunnel a une seule règle d'ingress : tout → `http://traefik:8080`.
 
@@ -59,12 +59,12 @@ Rendre un projet public = créer **un** CNAME. Le tunnel a une seule règle d'in
 ## Secrets
 
 - Chiffrés avec sops + age dans le repo de config : `secrets/infra.env` (tokens Cloudflare, email ACME…), `secrets/cloudflared.json` (credentials du tunnel), `secrets/projects/<projet>.env`.
-- Déchiffrés à la demande par `infra render` vers l'hôte (0600, propriétaire `ai-infra`). Jamais dans les logs, jamais dans les runs du LLM (le runner les masque), jamais en clair dans git.
+- Déchiffrés à la demande par le tool `env_decrypt` vers l'hôte (0600, propriétaire `ai-infra`). Jamais dans les logs, jamais dans les runs du LLM (le runner les masque), jamais en clair dans git.
 - Édition : `infra secrets edit projects/<projet>.env` (= `sops`).
 
 ## Idempotence
 
-Chaque commande `infra` et chaque skill doivent pouvoir être rejoués sans effet si l'état est déjà le bon. Toujours : lire l'état réel (`infra status <projet>`), comparer à l'état voulu, n'agir que sur l'écart.
+Chaque tool et chaque run doivent pouvoir être rejoués sans effet si l'état est déjà le bon. Toujours : lire l'état réel (`project_status`), comparer à l'état voulu, n'agir que sur l'écart.
 
 ## Journal
 

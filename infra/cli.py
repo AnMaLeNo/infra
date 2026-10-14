@@ -115,7 +115,7 @@ def render_cmd(name: str):
 @app.command()
 @_main_guard
 def up(name: str):
-    """docker compose up -d --build avec l'override généré."""
+    """docker compose up -d --build avec l'override généré (aide humaine ; le LLM lance docker compose lui-même)."""
     t = _target(name)
     compose.up(t)
     _out(compose.status(t))
@@ -126,28 +126,6 @@ def up(name: str):
 def down(name: str, volumes: bool = typer.Option(False, help="supprime aussi les volumes nommés")):
     """Arrête le projet (données conservées sauf --volumes)."""
     compose.down(_target(name), volumes=volumes)
-
-
-@app.command()
-@_main_guard
-def apply(name: str | None = typer.Argument(None), all_: bool = typer.Option(False, "--all"),
-          force_dns: bool = typer.Option(False, "--force-dns")):
-    """fetch + render + up + dns pour un projet (ou --all). Idempotent."""
-    reg, h = config.registry(), config.host()
-    names = list(reg.projects) if all_ else [name]
-    if not names or names == [None]:
-        raise typer.BadParameter("nom de projet ou --all")
-    for n in names:
-        t = Target(n, config.project(n), h)
-        if not t.project.enabled:
-            compose.down(t)
-            dnsmod.prune_project(n, t.project, h) if secrets.exists("infra.env") else None
-            _out({n: "arrêté (enabled: false)"})
-            continue
-        res = compose.apply(t)
-        if t.expose != "none" or t.project.previews != "none":
-            res["dns"] = dnsmod.ensure_project(n, t.project, h, force=force_dns)
-        _out({n: res})
 
 
 @app.command("set")
@@ -246,6 +224,14 @@ def skills_cmd(name: str | None = typer.Argument(None)):
 
 @app.command()
 @_main_guard
+def mcp():
+    """Serveur MCP (stdio) : les tools atomiques de l'outil, pour Claude Code (branché par le runner)."""
+    from .mcp_server import main
+    main()
+
+
+@app.command()
+@_main_guard
 def serve(host: str = "127.0.0.1", port: int = 8000):
     """API + UI web."""
     import uvicorn
@@ -284,9 +270,9 @@ def dns_ensure(name: str, force: bool = typer.Option(False, "--force", help="éc
 
 @dns_app.command("prune")
 @_main_guard
-def dns_prune(name: str):
-    """Supprime tous les enregistrements d'un projet."""
-    _out(dnsmod.prune_project(name, config.project(name), config.host()) or "rien")
+def dns_prune(name: str, public_only: bool = typer.Option(False, "--public", help="ne supprime que le CNAME public")):
+    """Supprime les enregistrements d'un projet."""
+    _out(dnsmod.prune_project(name, config.project(name), config.host(), public_only=public_only) or "rien")
 
 
 @dns_app.command("bootstrap")

@@ -103,10 +103,13 @@ def ensure_project(name: str, prj: Project, h: Host, force: bool = False) -> dic
     return result
 
 
-def prune_project(name: str, prj: Project, h: Host) -> dict[str, str]:
+def prune_project(name: str, prj: Project, h: Host, public_only: bool = False) -> dict[str, str]:
     cf = CF()
     zid = _zone(cf, h)
-    return {n: "deleted" for n in project_names(name, prj, h) if cf.delete_name(zid, n)}
+    names = project_names(name, prj, h)
+    if public_only:
+        names = [n for n in names if n.endswith(h.public_zone) and not n.startswith("*.")]
+    return {n: "deleted" for n in names if cf.delete_name(zid, n)}
 
 
 def bootstrap(h: Host) -> dict[str, str]:
