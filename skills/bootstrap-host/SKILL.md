@@ -17,7 +17,7 @@ Repo de config cloné avec `--recursive` en `/srv/infra` ; clé age privée disp
 6. Si `public_ingress: cloudflare-tunnel` : `infra tunnel create` (une fois ; écrit `tunnel_id` dans host.yaml et `secrets/cloudflared.json`) puis `infra stack up cloudflared` ; `docker logs cloudflared` montre 4 `Registered tunnel connection`.
 7. `infra stack up ui` et `sudo systemctl enable --now infra-runner` ; `https://infra.<private_zone>` s'affiche depuis le tailnet.
 8. Stacks optionnelles de `host.yaml: stacks` (`infra stack up --all`).
-9. `infra baseline` si le registre décrit des projets déjà en place (évite des runs immédiats), puis commit de `host.yaml` + `secrets/cloudflared.json` dans le repo de config.
+9. Commit de `host.yaml` + `secrets/cloudflared.json` dans le repo de config. Les projets du registre ne sont **pas** déployés à cette étape : rien ne se lance sans un clic sur « Lancer Claude » (ou `infra enqueue`), projet par projet — l'outil peut donc être installé à côté de services existants.
 10. `infra doctor` : tout `ok`.
 
 ## Pièges connus

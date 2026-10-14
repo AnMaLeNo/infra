@@ -1,7 +1,7 @@
 """Lance `claude -p` sur un projet avec les bons skills, et journalise dans <config>/runs/.
 
-`infra watch` surveille registry.yaml : à chaque changement d'une entrée (UI, git pull, édition),
-un run est lancé pour ce projet. Un seul run à la fois (verrou), file d'attente par projet.
+Rien ne se déclenche tout seul : un run est demandé explicitement (bouton « Lancer Claude » du front → `enqueue`,
+ou `infra run <P>` en CLI). `infra watch` (service infra-runner) consomme la file `runs/queue/` un projet à la fois.
 """
 from __future__ import annotations
 
@@ -133,7 +133,7 @@ def get_run(file: str) -> dict:
     return json.loads((paths.runs_dir() / file).read_text())
 
 
-# ---- watcher -------------------------------------------------------------------------------------
+# ---- file d'attente et état -------------------------------------------------------------------
 
 def _state_file() -> Path:
     return paths.runs_dir() / ".state.json"
@@ -150,17 +150,12 @@ def save_state(state: dict) -> None:
     p.write_text(json.dumps(state, indent=2))
 
 
-def diff(state: dict) -> list[tuple[str, Project | None]]:
-    """Projets dont l'entrée diffère de la dernière appliquée (ou disparus)."""
+def changed_since_last_run(state: dict) -> list[str]:
+    """Projets dont l'entrée du registre diffère de celle du dernier run (indicateur « modifié » du front)."""
     reg = config.registry()
-    changed = []
-    for name, prj in reg.projects.items():
-        if state.get(name, {}).get("hash") != _hash(prj):
-            changed.append((name, prj))
-    for name, st in state.items():
-        if name not in reg.projects and st.get("hash") != "absent":
-            changed.append((name, None))
-    return changed
+    out = [n for n, p in reg.projects.items() if state.get(n, {}).get("hash") != _hash(p)]
+    out += [n for n, st in state.items() if n not in reg.projects and st.get("hash") != "absent"]
+    return out
 
 
 def mark_applied(state: dict, name: str, prj: Project | None, ok: bool) -> None:
@@ -169,27 +164,72 @@ def mark_applied(state: dict, name: str, prj: Project | None, ok: bool) -> None:
     save_state(state)
 
 
-def watch(interval: float = 5.0, once: bool = False, dry: bool = False) -> None:
-    print(f"watch {paths.config_dir() / 'registry.yaml'} toutes les {interval}s", file=sys.stderr)
+def queue_dir() -> Path:
+    d = paths.runs_dir() / "queue"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def enqueue(name: str) -> dict:
+    """Demande un run pour un projet (idempotent : une seule demande en attente par projet)."""
+    p = queue_dir() / f"{name}.json"
+    if p.exists():
+        return json.loads(p.read_text())
+    req = {"project": name, "requested": datetime.now(UTC).isoformat()}
+    p.write_text(json.dumps(req))
+    return req
+
+
+def queued() -> list[str]:
+    return sorted(p.stem for p in queue_dir().glob("*.json"))
+
+
+def running() -> str | None:
+    p = paths.runs_dir() / ".running"
+    return p.read_text().strip() if p.exists() else None
+
+
+def _set_running(name: str | None) -> None:
+    p = paths.runs_dir() / ".running"
+    if name is None:
+        p.unlink(missing_ok=True)
+    else:
+        p.write_text(name)
+
+
+def process_one(dry: bool = False) -> dict | None:
+    """Exécute la plus ancienne demande de la file. Retourne le run, ou None si la file est vide."""
+    files = sorted(queue_dir().glob("*.json"), key=lambda p: p.stat().st_mtime)
+    if not files:
+        return None
+    req = files[0]
+    name = req.stem
+    state = load_state()
+    prj = config.registry().projects.get(name)
+    previous = state.get(name, {}).get("entry")
+    _set_running(name)
+    try:
+        rec = run_project(name, prj, previous, dry=dry)
+    except Exception as e:  # noqa: BLE001 — un run qui plante ne doit pas tuer le service
+        rec = {"project": name, "started": datetime.now(UTC).isoformat(), "ok": False,
+               "result": f"erreur du runner : {e}", "skills": skills.for_project(prj) if prj else []}
+        _save(rec)
+    finally:
+        _set_running(None)
+        req.unlink(missing_ok=True)
+    if not dry:
+        mark_applied(state, name, prj, rec.get("ok", False))
+    return rec
+
+
+def watch(interval: float = 3.0, once: bool = False, dry: bool = False) -> None:
+    """Boucle du service infra-runner : consomme la file, un projet à la fois."""
+    print(f"runner : file {queue_dir()} (toutes les {interval}s)", file=sys.stderr)
     while True:
-        state = load_state()
-        try:
-            changes = diff(state)
-        except Exception as e:  # registre invalide : on attend une correction
-            print(f"registry.yaml invalide : {e}", file=sys.stderr)
-            changes = []
-        for name, prj in changes:
-            previous = state.get(name, {}).get("entry")
-            print(f"→ run {name}", file=sys.stderr)
-            try:
-                rec = run_project(name, prj, previous, dry=dry)
-                ok = rec.get("ok", False)
-            except Exception as e:
-                print(f"run {name} : {e}", file=sys.stderr)
-                ok = False
-            # on marque même en échec : pas de boucle infinie ; l'UI montre l'échec, une nouvelle édition relance
-            if not dry:
-                mark_applied(state, name, prj, ok)
+        rec = process_one(dry=dry)
+        if rec:
+            print(f"run {rec['project']} : {'ok' if rec.get('ok') else 'échec'}", file=sys.stderr)
         if once:
             return
-        time.sleep(interval)
+        if rec is None:
+            time.sleep(interval)

@@ -165,7 +165,7 @@ def purge(name: str, yes: bool = typer.Option(False, "--yes")):
 @app.command()
 @_main_guard
 def run(name: str, dry: bool = typer.Option(False, help="affiche le prompt sans lancer claude")):
-    """Lance un run LLM (claude -p) pour un projet, avec ses skills."""
+    """Lance immédiatement un run LLM (claude -p) pour un projet, avec ses skills (sans passer par la file)."""
     reg = config.registry()
     prj = reg.projects.get(name)
     state = runner.load_state()
@@ -180,29 +180,25 @@ def run(name: str, dry: bool = typer.Option(False, help="affiche le prompt sans 
 
 @app.command()
 @_main_guard
-def watch(interval: float = 5.0, once: bool = False, dry: bool = False):
-    """Surveille registry.yaml et lance un run par projet modifié (service infra-runner)."""
+def watch(interval: float = 3.0, once: bool = False, dry: bool = False):
+    """Service infra-runner : exécute les runs demandés (front / `infra enqueue`), un à la fois. Rien d'automatique."""
     runner.watch(interval=interval, once=once, dry=dry)
 
 
 @app.command()
 @_main_guard
-def baseline(name: str | None = typer.Argument(None, help="un projet, sinon tous")):
-    """Marque les entrées du registre comme déjà appliquées, sans lancer de run (adoption d'un hôte existant)."""
-    reg = config.registry()
-    state = runner.load_state()
-    names = [name] if name else list(reg.projects)
-    for n in names:
-        runner.mark_applied(state, n, config.project(n), ok=True)
-    _out({"baseline": names})
+def enqueue(name: str):
+    """Demande un run pour un projet (équivalent du bouton « Lancer Claude » du front)."""
+    config.project(name) if name in config.registry().projects else None
+    _out(runner.enqueue(name))
 
 
 @app.command()
 @_main_guard
 def plan():
-    """Projets dont l'entrée du registre a changé depuis le dernier run."""
-    changes = runner.diff(runner.load_state())
-    _out({n: (p.model_dump(exclude_defaults=True) if p else "supprimé") for n, p in changes} or "rien à faire")
+    """Projets modifiés depuis leur dernier run, demandes en attente, run en cours."""
+    _out({"modifiés": runner.changed_since_last_run(runner.load_state()) or "aucun",
+          "en attente": runner.queued() or "aucune", "en cours": runner.running() or "aucun"})
 
 
 @app.command()

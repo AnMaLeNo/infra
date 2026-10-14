@@ -4,7 +4,7 @@ Un skill = un `SKILL.md` qui décrit un **but** et l'**état cible** à atteindr
 
 ## Résolution
 
-Quand le projet `P` change dans `registry.yaml`, le runner donne au LLM :
+Quand un run est demandé pour le projet `P` (bouton « Lancer Claude »), le runner donne au LLM :
 
 | Situation | Skills |
 |---|---|

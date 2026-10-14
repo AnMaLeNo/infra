@@ -30,13 +30,29 @@ def host():
 def projects():
     reg, h = config.registry(), config.host()
     state = runner.load_state()
+    queued, running = set(runner.queued()), runner.running()
     out = {}
     for name, prj in reg.projects.items():
         t = Target(name, prj, h)
         st = state.get(name, {})
         out[name] = {"entry": prj.model_dump(), "urls": t.urls, "skills": skills.for_project(prj),
-                     "applied": st.get("hash") == runner._hash(prj), "last_ok": st.get("ok"), "last_at": st.get("at")}
+                     "changed": st.get("hash") != runner._hash(prj), "never_run": "hash" not in st,
+                     "queued": name in queued, "running": running == name,
+                     "last_ok": st.get("ok"), "last_at": st.get("at")}
     return out
+
+
+@app.post("/api/projects/{name}/run")
+def request_run(name: str):
+    """Bouton « Lancer Claude » : met le projet dans la file du runner. Rien ne se lance sans ça."""
+    if name not in config.registry().projects and name not in runner.load_state():
+        raise HTTPException(404, "projet inconnu")
+    return runner.enqueue(name)
+
+
+@app.get("/api/runner")
+def runner_state():
+    return {"queued": runner.queued(), "running": runner.running()}
 
 
 @app.get("/api/projects/{name}")

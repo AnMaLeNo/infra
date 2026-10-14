@@ -7,15 +7,15 @@ Outil générique pour déployer des projets GitHub sur **un** serveur (Raspberr
 ## Idée
 
 - Un **repo de config privé** (ex. `infra-raspberry-pi`) décrit *l'état voulu* du serveur : `host.yaml` (le serveur), `registry.yaml` (les projets : repo GitHub + comment les exposer), `secrets/` (chiffrés sops+age), `skills/` (skills custom). Il embarque cet outil comme sous-module `tool/` épinglé sur une version.
-- **C'est un LLM qui déploie.** À chaque changement de `registry.yaml`, le runner lance `claude -p` avec l'objectif (l'entrée modifiée), les skills correspondants (but + état cible + conventions, pas des procédures) et un serveur **MCP** de petits tools atomiques. Claude choisit le chemin, lit le repo du projet, écrit ce qui manque, lance `docker compose`, vérifie. Il n'y a volontairement **pas** de commande « déploie tout » déterministe : un projet sans Dockerfile, un cas tordu, une erreur de build sont des situations normales que l'agent gère.
+- **C'est un LLM qui déploie, quand on le lui demande.** Modifier `registry.yaml` (front ou git) ne déclenche rien ; le bouton **Lancer Claude** d'un projet (ou `infra enqueue <P>`) met une demande dans la file, et le runner lance `claude -p` avec l'objectif (l'entrée du projet), les skills correspondants (but + état cible + conventions, pas des procédures) et un serveur **MCP** de petits tools atomiques. Claude choisit le chemin, lit le repo du projet, écrit ce qui manque, lance `docker compose`, vérifie. Il n'y a volontairement **pas** de commande « déploie tout » déterministe : un projet sans Dockerfile, un cas tordu, une erreur de build sont des situations normales que l'agent gère.
 - Les tools MCP (`infra mcp`) sont des raccourcis fiables pour les gestes répétitifs qu'on ne veut pas voir réinventés : synchroniser un repo au bon endroit, générer l'override compose (ports neutralisés, labels Traefik, réseau), déchiffrer un `.env`, créer un enregistrement DNS, lire l'état. Chacun fait **une** chose et échoue clairement quand il ne s'applique pas ; l'agent fait alors autrement, à la main. On en ajoute au fil de l'usage, à partir de ce que les runs ont dû faire manuellement.
 - Chaque serveur a son propre clone. L'outil ne gère **que** le serveur où il tourne.
 
 ```
-registry.yaml modifié (UI web ou git push)
+registry.yaml modifié (UI web ou git)  →  rien ne se passe
         │
-        ▼
- runner (infra watch) : détecte le diff par projet, choisit les skills
+        ▼  bouton « Lancer Claude » (ou `infra enqueue <P>`)
+ runner (infra watch) : prend la demande, un projet à la fois, choisit les skills
         │   skills/service/<service>, skills/expose/<expose>, skills/previews, skills/migrate-legacy…
         ▼
  claude -p  « amène le projet X à l'état voulu »  + SKILL.md  + MCP `infra`

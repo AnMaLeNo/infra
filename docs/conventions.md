@@ -68,4 +68,4 @@ Chaque tool et chaque run doivent pouvoir être rejoués sans effet si l'état e
 
 ## Journal
 
-Chaque run du LLM écrit `/srv/infra/runs/<horodatage>-<projet>.json` (entrée du registre avant/après, skills utilisés, sortie, succès/échec). L'UI les affiche.
+Chaque run du LLM écrit `/srv/infra/runs/<horodatage>-<projet>.json` (entrée du registre avant/après, skills utilisés, sortie, succès/échec). Les demandes en attente sont dans `runs/queue/<projet>.json`, le run en cours dans `runs/.running`. L'UI affiche tout ça.
