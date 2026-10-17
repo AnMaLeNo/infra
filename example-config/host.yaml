@@ -9,6 +9,9 @@ cloudflare:
   zone_id: ""                            # rempli par `infra tunnel create` / `infra dns bootstrap`
   account_id: ""
   tunnel_id: ""
+llm:                                     # claude -p, pour tous les runs (modifiable dans le front, ⚙)
+  model: sonnet                          # alias (sonnet, opus, haiku) ou nom complet
+  effort: high                           # low | medium | high | xhigh | max
 stacks: [traefik, cloudflared, ui, mosquitto]
 exceptions:                              # ce qui ne tourne pas en Docker, et pourquoi
   - name: infra-runner

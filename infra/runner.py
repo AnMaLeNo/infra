@@ -79,6 +79,8 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
     if dry:
         rec.update({"dry": True, "ok": True})
         return rec
+    llm = config.host().llm
+    rec.update({"model": llm.model, "effort": llm.effort})
     env = {**os.environ}
     ienv = secrets.infra_env()
     if "CLAUDE_CODE_OAUTH_TOKEN" in ienv and "CLAUDE_CODE_OAUTH_TOKEN" not in env:
@@ -87,23 +89,34 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
     mcp_cfg.parent.mkdir(parents=True, exist_ok=True)
     mcp_cfg.write_text(json.dumps({"mcpServers": {"infra": {"command": shutil.which("infra") or "infra", "args": ["mcp"],
                                                              "env": {"INFRA_CONFIG_DIR": str(paths.config_dir())}}}}))
-    cmd = [claude_bin(), "-p", prompt, "--output-format", "json", "--allowedTools", ALLOWED_TOOLS,
+    # stream-json + --verbose : on garde TOUT le déroulé (tool calls, textes, résultat) dans runs/<run>.log
+    cmd = [claude_bin(), "-p", prompt, "--output-format", "stream-json", "--verbose",
+           "--model", llm.model, "--effort", llm.effort, "--allowedTools", ALLOWED_TOOLS,
            "--permission-mode", "acceptEdits", "--mcp-config", str(mcp_cfg), "--strict-mcp-config"]
     cp = subprocess.run(cmd, check=False, cwd=paths.config_dir(), env=env, text=True, capture_output=True)
     secret_values = list(ienv.values())
-    try:
-        out = json.loads(cp.stdout)
+    result_text, out = "", None
+    for line in cp.stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(ev, dict) and ev.get("type") == "result":
+            out = ev
+    if out is not None:
         result_text = out.get("result", "")
         rec.update({"cost_usd": out.get("total_cost_usd"), "duration_ms": out.get("duration_ms"),
                     "num_turns": out.get("num_turns"), "is_error": out.get("is_error", False)})
-    except json.JSONDecodeError:
-        result_text = cp.stdout
+    else:
+        result_text = cp.stdout[-4000:]
         rec["is_error"] = True
     rec["result"] = secrets.mask(result_text, secret_values)
     rec["stderr"] = secrets.mask(cp.stderr[-4000:], secret_values)
     rec["ok"] = cp.returncode == 0 and not rec.get("is_error")
     rec["finished"] = datetime.now(UTC).isoformat()
-    _save(rec)
+    p = _save(rec)
+    p.with_suffix(".log").write_text(secrets.mask(cp.stdout, secret_values)
+                                     + ("\n\n--- stderr ---\n" + secrets.mask(cp.stderr, secret_values) if cp.stderr else ""))
     return rec
 
 
@@ -124,13 +137,30 @@ def list_runs(limit: int = 50) -> list[dict]:
         if p.name.startswith("."):
             continue
         r = json.loads(p.read_text())
-        out.append({k: r.get(k) for k in ("project", "started", "finished", "ok", "skills", "cost_usd", "duration_ms", "dry")}
-                   | {"file": p.name})
+        out.append(_summary(r, p))
     return out
+
+
+def _summary(r: dict, p: Path) -> dict:
+    keys = ("project", "started", "finished", "ok", "skills", "cost_usd", "duration_ms", "num_turns", "dry", "model", "effort")
+    return {k: r.get(k) for k in keys} | {"file": p.name, "log": p.with_suffix(".log").name if p.with_suffix(".log").exists() else None}
+
+
+def runs_for_project(name: str) -> list[dict]:
+    d = paths.runs_dir()
+    if not d.exists():
+        return []
+    return [_summary(json.loads(p.read_text()), p) for p in sorted(d.glob(f"*-{name}.json"))
+            if not p.name.startswith(".")]
 
 
 def get_run(file: str) -> dict:
     return json.loads((paths.runs_dir() / file).read_text())
+
+
+def get_log(file: str) -> str:
+    p = paths.runs_dir() / file
+    return p.read_text() if p.exists() else ""
 
 
 # ---- file d'attente et état -------------------------------------------------------------------

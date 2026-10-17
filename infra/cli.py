@@ -208,6 +208,24 @@ def runs(limit: int = 20):
     _out(runner.list_runs(limit))
 
 
+@app.command()
+@_main_guard
+def history(name: str):
+    """Historique d'un projet : versions de sa config + ses runs (ce que montre le bouton « Historique » du front)."""
+    from . import history as hist
+    _out({"config": hist.for_project(name), "runs": runner.runs_for_project(name)})
+
+
+@app.command("llm")
+@_main_guard
+def llm_cmd(model: str | None = typer.Option(None), effort: str | None = typer.Option(None)):
+    """Affiche / règle le modèle et l'effort de claude -p pour tous les runs (host.yaml → llm)."""
+    if model or effort:
+        _out(config.set_llm(model=model, effort=effort).model_dump())
+    else:
+        _out(config.host().llm.model_dump())
+
+
 @app.command("skills")
 @_main_guard
 def skills_cmd(name: str | None = typer.Argument(None)):

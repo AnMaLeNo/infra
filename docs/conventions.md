@@ -68,4 +68,6 @@ Chaque tool et chaque run doivent pouvoir être rejoués sans effet si l'état e
 
 ## Journal
 
-Chaque run du LLM écrit `/srv/infra/runs/<horodatage>-<projet>.json` (entrée du registre avant/après, skills utilisés, sortie, succès/échec). Les demandes en attente sont dans `runs/queue/<projet>.json`, le run en cours dans `runs/.running`. L'UI affiche tout ça.
+Chaque run du LLM écrit `/srv/infra/runs/<horodatage>-<projet>.json` (entrée du registre avant/après, prompt, skills, modèle/effort, résumé, coût, succès/échec) et `<même nom>.log` (déroulé complet `stream-json` : textes, appels d'outils, résultat ; secrets masqués). Chaque écriture du registre pour un projet ajoute une ligne à `runs/history/<projet>.jsonl`. Les demandes en attente sont dans `runs/queue/<projet>.json`, le run en cours dans `runs/.running`. Le bouton **Historique** d'un projet dans l'UI (ou `infra history <P>`) montre la chronologie complète config + runs.
+
+Le modèle et l'effort de `claude -p` sont dans `host.yaml → llm` (bouton ⚙ du front, `infra llm --model … --effort …`) et s'appliquent à tous les runs.

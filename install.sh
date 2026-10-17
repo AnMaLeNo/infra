@@ -52,10 +52,6 @@ sed "s#@CONFIG_DIR@#$CONFIG_DIR#g" "$TOOL_DIR/deploy/infra-runner.service" > /et
 systemctl daemon-reload
 systemctl enable infra-runner >/dev/null
 
-echo "== sshd"
-if ! grep -qE '^PasswordAuthentication no' /etc/ssh/sshd_config; then
-  sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && systemctl reload ssh 2>/dev/null || true
-fi
-
 echo
+echo "Note : sshd n'est pas touché (PasswordAuthentication, clés) — à faire à la main quand tout est stable."
 echo "OK. Suite : skills/bootstrap-host/SKILL.md (clé age → $CONFIG_DIR/.age-key, tailscale up, infra stack up traefik…)"

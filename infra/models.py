@@ -19,6 +19,15 @@ class Cloudflare(BaseModel):
     tunnel_id: str = ""
 
 
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
+
+
+class Llm(BaseModel):
+    """Paramètres de `claude -p`, communs à tous les runs de l'hôte (réglables dans le front)."""
+    model: str = "sonnet"              # alias (sonnet, opus…) ou nom complet
+    effort: Effort = "high"
+
+
 class Exception_(BaseModel):
     name: str
     reason: str
@@ -32,6 +41,7 @@ class Host(BaseModel):
     public_ingress: Ingress = "cloudflare-tunnel"
     public_ip: str | None = None
     cloudflare: Cloudflare = Field(default_factory=Cloudflare)
+    llm: Llm = Field(default_factory=Llm)
     stacks: list[str] = Field(default_factory=lambda: ["traefik", "cloudflared", "ui"])
     exceptions: list[Exception_] = Field(default_factory=list)
     notes: str = ""
