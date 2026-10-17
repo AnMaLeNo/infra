@@ -69,3 +69,21 @@ def test_skills_resolution(env):
 def test_set_project_fields(env):
     config.set_project_fields("catacombes", port=9000, notes="x")
     assert config.project("catacombes").port == 9000
+
+
+
+def test_changed_since_last_run_and_queue(env):
+    from infra import runner
+    state = runner.load_state()
+    assert set(runner.changed_since_last_run(state)) == set(config.registry().projects)   # jamais lancés
+    for n, prj in config.registry().projects.items():
+        runner.mark_applied(state, n, prj, ok=True)
+    assert runner.changed_since_last_run(runner.load_state()) == []
+    config.set_project_fields("catacombes", port=1)
+    assert runner.changed_since_last_run(runner.load_state()) == ["catacombes"]
+    runner.enqueue("catacombes")
+    runner.enqueue("catacombes")
+    assert runner.queued() == ["catacombes"]
+    rec = runner.process_one(dry=True)                      # dry : construit le prompt, ne lance pas claude
+    assert rec["project"] == "catacombes" and rec["dry"] and runner.queued() == [] and runner.running() is None
+    assert runner.process_one(dry=True) is None

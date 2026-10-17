@@ -4,8 +4,8 @@ from pathlib import Path
 
 import yaml
 
-from . import paths
-from .models import Host, Project, Registry
+from . import history, paths
+from .models import Host, Llm, Project, Registry
 
 
 def load_yaml(p: Path) -> dict:
@@ -33,8 +33,19 @@ def project(name: str) -> Project:
     return reg.projects[name]
 
 
-def set_project_fields(name: str, **fields) -> Project:
-    """Modifie registry.yaml (utilisé par `infra set` et l'UI). Préserve l'ordre et les autres clés."""
+def set_llm(**fields) -> Llm:
+    """Modifie host.yaml → llm (modèle / effort de claude -p), depuis le front ou `infra set-llm`."""
+    p = paths.config_dir() / "host.yaml"
+    raw = load_yaml(p)
+    raw["llm"] = {**raw.get("llm", {}), **{k: v for k, v in fields.items() if v is not None}}
+    h = Host.model_validate(raw)
+    dump_yaml(raw, p)
+    return h.llm
+
+
+def set_project_fields(name: str, source: str = "ui", **fields) -> Project:
+    """Modifie registry.yaml (utilisé par `infra set` et l'UI). Préserve l'ordre et les autres clés.
+    Chaque écriture est historisée dans runs/history/<P>.jsonl."""
     p = paths.config_dir() / "registry.yaml"
     raw = load_yaml(p)
     raw.setdefault("projects", {})
@@ -46,14 +57,16 @@ def set_project_fields(name: str, **fields) -> Project:
             raw["projects"][name][k] = v
     reg = Registry.model_validate(raw)  # valide avant d'écrire
     dump_yaml(raw, p)
+    history.record(name, reg.projects[name].model_dump(), source)
     return reg.projects[name]
 
 
-def remove_project(name: str) -> None:
+def remove_project(name: str, source: str = "ui") -> None:
     p = paths.config_dir() / "registry.yaml"
     raw = load_yaml(p)
-    raw.get("projects", {}).pop(name, None)
-    dump_yaml(raw, p)
+    if raw.get("projects", {}).pop(name, None) is not None:
+        dump_yaml(raw, p)
+        history.record(name, None, source)
 
 
 def domain_of(name: str, prj: Project) -> str:

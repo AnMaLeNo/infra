@@ -115,7 +115,7 @@ def render_cmd(name: str):
 @app.command()
 @_main_guard
 def up(name: str):
-    """docker compose up -d --build avec l'override généré."""
+    """docker compose up -d --build avec l'override généré (aide humaine ; le LLM lance docker compose lui-même)."""
     t = _target(name)
     compose.up(t)
     _out(compose.status(t))
@@ -126,28 +126,6 @@ def up(name: str):
 def down(name: str, volumes: bool = typer.Option(False, help="supprime aussi les volumes nommés")):
     """Arrête le projet (données conservées sauf --volumes)."""
     compose.down(_target(name), volumes=volumes)
-
-
-@app.command()
-@_main_guard
-def apply(name: str | None = typer.Argument(None), all_: bool = typer.Option(False, "--all"),
-          force_dns: bool = typer.Option(False, "--force-dns")):
-    """fetch + render + up + dns pour un projet (ou --all). Idempotent."""
-    reg, h = config.registry(), config.host()
-    names = list(reg.projects) if all_ else [name]
-    if not names or names == [None]:
-        raise typer.BadParameter("nom de projet ou --all")
-    for n in names:
-        t = Target(n, config.project(n), h)
-        if not t.project.enabled:
-            compose.down(t)
-            dnsmod.prune_project(n, t.project, h) if secrets.exists("infra.env") else None
-            _out({n: "arrêté (enabled: false)"})
-            continue
-        res = compose.apply(t)
-        if t.expose != "none" or t.project.previews != "none":
-            res["dns"] = dnsmod.ensure_project(n, t.project, h, force=force_dns)
-        _out({n: res})
 
 
 @app.command("set")
@@ -187,7 +165,7 @@ def purge(name: str, yes: bool = typer.Option(False, "--yes")):
 @app.command()
 @_main_guard
 def run(name: str, dry: bool = typer.Option(False, help="affiche le prompt sans lancer claude")):
-    """Lance un run LLM (claude -p) pour un projet, avec ses skills."""
+    """Lance immédiatement un run LLM (claude -p) pour un projet, avec ses skills (sans passer par la file)."""
     reg = config.registry()
     prj = reg.projects.get(name)
     state = runner.load_state()
@@ -202,17 +180,25 @@ def run(name: str, dry: bool = typer.Option(False, help="affiche le prompt sans 
 
 @app.command()
 @_main_guard
-def watch(interval: float = 5.0, once: bool = False, dry: bool = False):
-    """Surveille registry.yaml et lance un run par projet modifié (service infra-runner)."""
+def watch(interval: float = 3.0, once: bool = False, dry: bool = False):
+    """Service infra-runner : exécute les runs demandés (front / `infra enqueue`), un à la fois. Rien d'automatique."""
     runner.watch(interval=interval, once=once, dry=dry)
 
 
 @app.command()
 @_main_guard
+def enqueue(name: str):
+    """Demande un run pour un projet (équivalent du bouton « Lancer Claude » du front)."""
+    config.project(name) if name in config.registry().projects else None
+    _out(runner.enqueue(name))
+
+
+@app.command()
+@_main_guard
 def plan():
-    """Projets dont l'entrée du registre a changé depuis le dernier run."""
-    changes = runner.diff(runner.load_state())
-    _out({n: (p.model_dump(exclude_defaults=True) if p else "supprimé") for n, p in changes} or "rien à faire")
+    """Projets modifiés depuis leur dernier run, demandes en attente, run en cours."""
+    _out({"modifiés": runner.changed_since_last_run(runner.load_state()) or "aucun",
+          "en attente": runner.queued() or "aucune", "en cours": runner.running() or "aucun"})
 
 
 @app.command()
@@ -220,6 +206,24 @@ def plan():
 def runs(limit: int = 20):
     """Derniers runs LLM."""
     _out(runner.list_runs(limit))
+
+
+@app.command()
+@_main_guard
+def history(name: str):
+    """Historique d'un projet : versions de sa config + ses runs (ce que montre le bouton « Historique » du front)."""
+    from . import history as hist
+    _out({"config": hist.for_project(name), "runs": runner.runs_for_project(name)})
+
+
+@app.command("llm")
+@_main_guard
+def llm_cmd(model: str | None = typer.Option(None), effort: str | None = typer.Option(None)):
+    """Affiche / règle le modèle et l'effort de claude -p pour tous les runs (host.yaml → llm)."""
+    if model or effort:
+        _out(config.set_llm(model=model, effort=effort).model_dump())
+    else:
+        _out(config.host().llm.model_dump())
 
 
 @app.command("skills")
@@ -230,6 +234,14 @@ def skills_cmd(name: str | None = typer.Argument(None)):
         _out({k: str(v) for k, v in skills.paths_for(config.project(name)).items()})
     else:
         _out(skills.list_all())
+
+
+@app.command()
+@_main_guard
+def mcp():
+    """Serveur MCP (stdio) : les tools atomiques de l'outil, pour Claude Code (branché par le runner)."""
+    from .mcp_server import main
+    main()
 
 
 @app.command()
@@ -272,9 +284,9 @@ def dns_ensure(name: str, force: bool = typer.Option(False, "--force", help="éc
 
 @dns_app.command("prune")
 @_main_guard
-def dns_prune(name: str):
-    """Supprime tous les enregistrements d'un projet."""
-    _out(dnsmod.prune_project(name, config.project(name), config.host()) or "rien")
+def dns_prune(name: str, public_only: bool = typer.Option(False, "--public", help="ne supprime que le CNAME public")):
+    """Supprime les enregistrements d'un projet."""
+    _out(dnsmod.prune_project(name, config.project(name), config.host(), public_only=public_only) or "rien")
 
 
 @dns_app.command("bootstrap")

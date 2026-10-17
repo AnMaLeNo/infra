@@ -1,20 +1,19 @@
 ---
 name: service/static
-description: Déployer un site statique (HTML/JS, ou build Vite/Astro…) sans compose dans le repo : l'outil fournit un nginx.
+description: Site statique (fichiers prêts ou build npm) sans compose dans le repo ; servi par un nginx fourni par l'outil.
 ---
-# Service `static`
+## But
+Le site est servi par un container nginx, à partir des fichiers du repo (éventuellement produits par `build:`), sans que le repo n'ait à contenir de Dockerfile ni de compose.
 
-## Quand
-`service: static`. Le repo n'a pas de compose ; il contient soit des fichiers statiques prêts (`static_dir`, défaut `.`), soit un build à faire (`build: "npm ci && npm run build"`, `static_dir: dist`).
+## État cible
+- Code dans `/srv/apps/<P>/repo` (`repo_sync`).
+- Si `build:` est défini (ex. `npm ci && npm run build`), il a été exécuté (dans un container `node:22`, pas sur l'hôte) et `static_dir` contient un `index.html`.
+- `/srv/apps/<P>/compose.static.yml` (nginx `1.27-alpine`, bind mount `static_dir` en lecture seule, port 80) et `compose.override.yml` générés par `compose_override` ; `container=web`, `port=80`.
+- `docker compose -p <P> -f compose.static.yml -f compose.override.yml up -d` passé ; `curl` sur l'IP du container → 200.
 
-## Étapes
-1. `infra fetch <P>`.
-2. Si `build:` est défini, il est exécuté dans un container `node:22` par `infra render` — vérifie que `static_dir` existe après : `ls /srv/apps/<P>/repo/<static_dir>/index.html`.
-3. `infra render <P>` génère un compose complet (`nginx:1.27-alpine`, bind mount du dossier en lecture seule, port 80) + labels. `container=web`, `port=80` sont imposés.
-4. `infra up <P>`, puis le skill `expose/<mode>`.
+## Outils utiles
+`repo_sync`, `compose_override` (fait le build si `build:`), `project_status`.
 
-## Vérification finale
-`curl -sI http://$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <P>-web-1)/` → 200.
-
-## Idempotence
-Pas de rebuild si le commit n'a pas changé.
+## Pièges connus
+- Build qui attend des variables (`VITE_*`) : `env: true` + `secrets/projects/<P>.env`.
+- Routing côté client (SPA) : nginx par défaut renvoie 404 sur les routes profondes ; si le site en a besoin, ajoute une config nginx dans `/srv/apps/<P>/nginx.conf` et un bind mount dans l'override — signale-le.

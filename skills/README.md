@@ -1,34 +1,29 @@
 # Skills
 
-Un skill = un dossier avec un `SKILL.md` : le mode d'emploi d'une opération, écrit pour un LLM (Claude Code).
+Un skill = un `SKILL.md` qui décrit un **but** et l'**état cible** à atteindre, pas une procédure. Le LLM (Claude Code) choisit lui-même le chemin ; il a Bash, les fichiers, et les tools MCP de l'outil (`infra mcp`) pour les gestes mécaniques et répétitifs qu'on ne veut pas voir réinventés (synchroniser un repo au bon endroit, générer l'override compose, calculer les labels Traefik, créer un enregistrement DNS, déchiffrer un .env). Si un tool ne convient pas à un projet (pas de compose, cas spécial), il le dit clairement et le LLM fait autrement, à la main.
 
 ## Résolution
 
-Quand le projet `P` change dans `registry.yaml`, le runner donne au LLM :
+Quand un run est demandé pour le projet `P` (bouton « Lancer Claude »), le runner donne au LLM :
 
 | Situation | Skills |
 |---|---|
 | `enabled: false` (ou projet supprimé) | `undeploy/` |
-| `enabled: true` | `service/<P.service>/` + `expose/<P.expose>/` (+ `previews/` si `P.previews != none`) |
+| `enabled: true` | `service/<P.service>/` + `expose/<P.expose>/` (+ `previews/` si `P.previews != none`) ; `migrate-legacy/` en plus si `legacy:` est renseigné |
 
-Pour chaque chemin, le runner prend d'abord `<config>/skills/<chemin>/SKILL.md` (skill custom du repo de config), sinon `tool/skills/<chemin>/SKILL.md`. Ajouter un mode `expose: lan` = créer `<config>/skills/expose/lan/SKILL.md`.
-
-Les autres skills (`bootstrap-host`, `agent-account`, `secrets`, `migrate-legacy`) sont invoqués par un humain ou par un LLM qui en a besoin.
+Pour chaque chemin : `<config>/skills/<chemin>/SKILL.md` (custom) sinon `tool/skills/<chemin>/SKILL.md`. Ajouter un mode `expose: lan` = écrire `<config>/skills/expose/lan/SKILL.md`.
 
 ## Format
 
 ```
 ---
 name: expose/public
-description: Une phrase. Quand l'utiliser.
+description: Une phrase.
 ---
-# Titre
-## Quand
-## Préconditions
-## Étapes      (numérotées, commandes exactes, vérification après chaque étape)
-## Vérification finale
-## Idempotence (ce qui ne doit rien faire si c'est déjà fait)
-## Erreurs connues
+## But
+## État cible          ← liste de faits vérifiables ; le run est réussi quand tout est vrai
+## Outils utiles       ← tools MCP / commandes, sans ordre imposé
+## Conventions à respecter
+## Pièges connus
+## Ne pas faire
 ```
-
-Règles d'écriture : commandes exactes, pas de « etc. » ; chaque étape dit comment vérifier qu'elle a réussi ; dire explicitement ce que le LLM **ne doit pas** faire (éditer un fichier généré, publier un port, sudo hors liste).

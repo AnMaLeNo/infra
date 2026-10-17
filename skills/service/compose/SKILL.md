@@ -1,35 +1,29 @@
 ---
 name: service/compose
-description: Déployer un projet qui fournit son propre docker-compose.yml. Type de service par défaut.
+description: Le projet fournit son propre docker-compose.yml ; le faire tourner sur cet hôte selon les conventions.
 ---
-# Service `compose`
+## But
+Le projet tourne en Docker Compose sur cet hôte, à partir de son propre `docker-compose.yml`, sans rien modifier dans son repo, avec un override généré qui l'adapte aux conventions de l'hôte.
 
-## Quand
-`registry.yaml: projects.<P>.service: compose` (défaut). Le repo du projet contient un `docker-compose.yml` (ou `compose.yaml`) qui fonctionne tel quel avec `docker compose up`.
+## État cible
+- Le code est dans `/srv/apps/<P>/repo` sur la bonne `ref` (tool `repo_sync`).
+- `registry.yaml` contient `container` (service compose qui reçoit le HTTP) et `port` (port d'écoute interne) exacts — lus dans le compose/Dockerfile, pas devinés au hasard ; fixés via `registry_set`.
+- `/srv/apps/<P>/compose.override.yml` existe, généré par le tool `compose_override` : ports publiés neutralisés, `restart: unless-stopped`, labels Traefik et réseau `traefik-net` sur `container`, `.env` déchiffré si `env: true`, bind mounts `/srv/data/<P>/…` pour les données déclarées dans `data:`.
+- `docker compose -p <P> --project-directory repo -f repo/docker-compose.yml -f compose.override.yml [--env-file .env] up -d --build` est passé ; tous les containers `running`/`healthy` (tool `project_status`).
+- Aucun port publié sur l'hôte (`project_status.published_ports` vide), sauf ceux de `expose_ports:` liés à l'IP Tailscale.
 
-## Préconditions
-- `infra status <P>` répond (hôte bootstrappé, Traefik up).
-- Les stacks de `needs:` tournent : `infra stack status`.
+## Outils utiles
+`repo_sync`, `registry_get`/`registry_set`, `compose_override` (lis le fichier généré avant de l'utiliser), `env_decrypt`, `project_status`, et Bash pour `docker compose …`, `docker logs`, lire le compose.
 
-## Étapes
-1. **Récupérer le code** : `infra fetch <P>` → clone/pull `/srv/apps/<P>/repo` sur `ref`. Vérifie : `git -C /srv/apps/<P>/repo log -1 --oneline`.
-2. **Comprendre le compose** : lis `/srv/apps/<P>/repo/docker-compose.yml`. Identifie le service HTTP d'entrée et son port d'écoute interne. Si `container`/`port` manquent dans le registre, déduis-les (le service avec `ports:` ou un `Dockerfile` qui `EXPOSE`), puis écris-les dans `registry.yaml` via `infra set <P> container=<svc> port=<n>` — ne laisse pas une déduction implicite.
-3. **Repérer les écarts aux conventions** (`docs/conventions.md`) et les traiter dans l'override, pas dans le repo du projet :
-   - `ports:` publiés → neutralisés automatiquement par `infra render`. Si un port non HTTP est indispensable, ajoute-le à `expose_ports:` du registre.
-   - `network_mode: host`, `privileged`, `devices:` → acceptable seulement avec une raison ; note-la dans `registry.yaml: projects.<P>.notes`.
-   - volumes nommés contenant des données → bind mount sous `/srv/data/<P>/` (ajoute `volumes:` dans `infra set <P> data=<svc>:<chemin>`).
-   - fichiers d'override de dev (`docker-compose.dev.yml`, `override` dans le repo) → **ne pas** les utiliser ; seul `docker-compose.yml` + l'override généré.
-   - `env_file: .env` attendu par le compose → fourni par le déchiffrement de `secrets/projects/<P>.env` (`env: true`). S'il manque des variables, demande-les (échec explicite dans le run), n'invente pas de valeurs.
-4. **Générer l'override** : `infra render <P>` → `/srv/apps/<P>/compose.override.yml` (labels Traefik, réseau, ports neutralisés, bind mounts) + `.env` déchiffré. Lis le fichier généré pour vérifier qu'il correspond à ce que tu attends. Ne l'édite jamais à la main.
-5. **Lancer** : `infra up <P>` (= `docker compose -p <P> -f repo/docker-compose.yml -f compose.override.yml up -d --build --remove-orphans`). Vérifie : `infra status <P>` → tous les containers `running`/`healthy`.
-6. Passe au skill `expose/<mode>` indiqué par le runner.
+## Conventions à respecter
+`docs/conventions.md` § Docker. En particulier : seul `docker-compose.yml` du repo est utilisé (jamais un `docker-compose.dev.yml`/override de dev du repo) ; données persistantes en bind mount sous `/srv/data/<P>/` ; pas de `latest` ajouté par toi.
 
-## Vérification finale
-`infra status <P>` : containers up, aucun port publié (`docker compose -p <P> ps --format json` → `Publishers` vide sauf `expose_ports`), service attaché à `traefik-net`.
+## Pièges connus
+- Volumes nommés contenant des données (postgres…) : déclare-les dans `data: ["<svc>:<chemin>"]` pour qu'ils deviennent des bind mounts ; sinon un `down -v` les perd.
+- Variables `${VAR}` sans défaut dans le compose : elles doivent être dans `secrets/projects/<P>.env` (`env: true`) ; si elles manquent, termine en échec en listant les noms (jamais inventer de valeur).
+- Image amd64 only sur un Pi (arm64) : cherche une variante multi-arch ou un `platform:` ; sinon échec explicite.
+- `network_mode: host`, `privileged`, `devices:` : acceptables avec une raison écrite dans `notes:`.
 
-## Idempotence
-`fetch` sans nouveau commit, `render` sans changement de registre, `up` sans changement d'image/config ⇒ aucune action. Rejouer le skill sur un projet déjà conforme ne doit rien redémarrer.
-
-## Erreurs connues
-- Build qui échoue sur ARM (image amd64 only) : cherche une variante `arm64` de l'image ou un `platform:`; si impossible, échec explicite avec la raison.
-- Le compose attend des variables absentes → `infra render` échoue avec la liste ; complète `secrets/projects/<P>.env` via `infra secrets edit projects/<P>.env`.
+## Ne pas faire
+- Éditer `compose.override.yml` à la main (il sera régénéré) : si le tool ne produit pas ce qu'il faut, ajuste le registre (`data`, `expose_ports`, `container`, `port`) et relance-le ; si c'est un vrai manque du tool, écris l'override à la main **et** signale-le dans ton résumé.
+- Modifier le repo du projet pour le déploiement (sauf : il n'a aucun compose → voir `migrate-legacy`).
