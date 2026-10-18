@@ -1,7 +1,7 @@
 """Lance `claude -p` sur un projet avec les bons skills, et journalise dans <config>/runs/.
 
-`infra watch` surveille registry.yaml : à chaque changement d'une entrée (UI, git pull, édition),
-un run est lancé pour ce projet. Un seul run à la fois (verrou), file d'attente par projet.
+Rien ne se déclenche tout seul : un run est demandé explicitement (bouton « Lancer Claude » du front → `enqueue`,
+ou `infra run <P>` en CLI). `infra watch` (service infra-runner) consomme la file `runs/queue/` un projet à la fois.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import yaml
 from . import config, paths, secrets, skills
 from .models import Project
 
-ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep"
+ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,mcp__infra"
 
 
 def _hash(prj: Project | None) -> str:
@@ -36,24 +36,30 @@ def build_prompt(name: str, prj: Project | None, previous: dict | None) -> str:
     if missing:
         raise RuntimeError(f"skills introuvables : {missing} (ni dans <config>/skills ni dans tool/skills)")
     tool = paths.tool_dir()
+    after = yaml.safe_dump({name: prj.model_dump(exclude_defaults=True)} if prj else {name: None}, sort_keys=False).strip()
+    before = yaml.safe_dump({name: previous} if previous else {name: None}, sort_keys=False).strip()
     lines = [
-        f"Tu es le runner de l'outil `infra` sur l'hôte `{h.name}`. Répertoire courant : {paths.config_dir()} (repo de config).",
-        f"Lis d'abord {tool / 'README.md'} et {tool / 'docs/conventions.md'}.",
-        f"Projet concerné : `{name}`.",
+        f"Tu es l'agent de déploiement de l'hôte `{h.name}` (outil `infra`). Répertoire courant : {paths.config_dir()} (repo de config).",
+        f"Contexte à lire d'abord : {tool / 'README.md'} puis {tool / 'docs/conventions.md'}.",
         "",
-        "Entrée du registre AVANT :",
-        "```yaml", yaml.safe_dump({name: previous} if previous else {name: None}, sort_keys=False).strip(), "```",
-        "Entrée du registre APRÈS (état voulu) :",
-        "```yaml", yaml.safe_dump({name: prj.model_dump(exclude_defaults=True)} if prj else {name: None}, sort_keys=False).strip(), "```",
+        f"Objectif : amener le projet `{name}` à l'état voulu ci-dessous. Tu as carte blanche sur le chemin ;",
+        "les skills décrivent le but et l'état cible à atteindre, pas une procédure.",
         "",
-        "Applique l'état voulu en suivant EXACTEMENT ces skills, dans l'ordre :",
+        "Entrée du registre AVANT :", "```yaml", before, "```",
+        "Entrée du registre APRÈS (état voulu) :", "```yaml", after, "```",
+        "",
+        "Skills à satisfaire :",
         *[f"- {rel} → {p}" for rel, p in sk.items()],
         "",
-        "Règles : commence par `infra status " + name + "` ; n'agis que sur l'écart ; utilise le CLI `infra` pour tout ce qui est mécanique ;",
-        "ne modifie jamais un fichier généré ; ne publie jamais de port ; n'affiche jamais la valeur d'un secret ;",
-        "si une information manque (port, container, variable d'env), déduis-la depuis le code du projet et fixe-la via `infra set`,",
-        "sinon termine en échec avec la question précise à poser à l'humain.",
-        "Termine par un résumé : ce qui a été fait, les URLs, ce qu'il reste à faire par un humain.",
+        "Tu disposes du serveur MCP `infra` (tools atomiques : repo_sync, compose_override, traefik_labels, env_decrypt,",
+        "dns_ensure/dns_prune/dns_list, registry_get/registry_set, project_status, host_info, secrets_keys…) et de Bash",
+        "(docker compose, git, curl, sudo limité). Les tools sont des raccourcis fiables pour les gestes répétitifs ; si l'un",
+        "ne convient pas au projet, il te le dira : fais alors autrement, à la main, et dis-le dans ton résumé.",
+        "",
+        "Règles : commence par constater l'état réel (project_status) et n'agis que sur l'écart ; ne publie jamais de port ;",
+        "n'affiche jamais la valeur d'un secret ; n'invente pas de valeur manquante (termine en échec avec la question précise) ;",
+        "ne modifie pas le repo du projet sauf cas prévu par un skill (PR). Termine par un résumé : ce qui a été fait,",
+        "les URLs, ce que tu as dû faire à la main (candidats à devenir des tools), ce qu'il reste à un humain.",
     ]
     return "\n".join(lines)
 
@@ -73,27 +79,44 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
     if dry:
         rec.update({"dry": True, "ok": True})
         return rec
+    llm = config.host().llm
+    rec.update({"model": llm.model, "effort": llm.effort})
     env = {**os.environ}
     ienv = secrets.infra_env()
     if "CLAUDE_CODE_OAUTH_TOKEN" in ienv and "CLAUDE_CODE_OAUTH_TOKEN" not in env:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = ienv["CLAUDE_CODE_OAUTH_TOKEN"]
-    cmd = [claude_bin(), "-p", prompt, "--output-format", "json", "--allowedTools", ALLOWED_TOOLS,
-           "--permission-mode", "acceptEdits"]
+    mcp_cfg = paths.runs_dir() / ".mcp.json"
+    mcp_cfg.parent.mkdir(parents=True, exist_ok=True)
+    mcp_cfg.write_text(json.dumps({"mcpServers": {"infra": {"command": shutil.which("infra") or "infra", "args": ["mcp"],
+                                                             "env": {"INFRA_CONFIG_DIR": str(paths.config_dir())}}}}))
+    # stream-json + --verbose : on garde TOUT le déroulé (tool calls, textes, résultat) dans runs/<run>.log
+    cmd = [claude_bin(), "-p", prompt, "--output-format", "stream-json", "--verbose",
+           "--model", llm.model, "--effort", llm.effort, "--allowedTools", ALLOWED_TOOLS,
+           "--permission-mode", "acceptEdits", "--mcp-config", str(mcp_cfg), "--strict-mcp-config"]
     cp = subprocess.run(cmd, check=False, cwd=paths.config_dir(), env=env, text=True, capture_output=True)
     secret_values = list(ienv.values())
-    try:
-        out = json.loads(cp.stdout)
+    result_text, out = "", None
+    for line in cp.stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(ev, dict) and ev.get("type") == "result":
+            out = ev
+    if out is not None:
         result_text = out.get("result", "")
         rec.update({"cost_usd": out.get("total_cost_usd"), "duration_ms": out.get("duration_ms"),
                     "num_turns": out.get("num_turns"), "is_error": out.get("is_error", False)})
-    except json.JSONDecodeError:
-        result_text = cp.stdout
+    else:
+        result_text = cp.stdout[-4000:]
         rec["is_error"] = True
     rec["result"] = secrets.mask(result_text, secret_values)
     rec["stderr"] = secrets.mask(cp.stderr[-4000:], secret_values)
     rec["ok"] = cp.returncode == 0 and not rec.get("is_error")
     rec["finished"] = datetime.now(UTC).isoformat()
-    _save(rec)
+    p = _save(rec)
+    p.with_suffix(".log").write_text(secrets.mask(cp.stdout, secret_values)
+                                     + ("\n\n--- stderr ---\n" + secrets.mask(cp.stderr, secret_values) if cp.stderr else ""))
     return rec
 
 
@@ -114,16 +137,33 @@ def list_runs(limit: int = 50) -> list[dict]:
         if p.name.startswith("."):
             continue
         r = json.loads(p.read_text())
-        out.append({k: r.get(k) for k in ("project", "started", "finished", "ok", "skills", "cost_usd", "duration_ms", "dry")}
-                   | {"file": p.name})
+        out.append(_summary(r, p))
     return out
+
+
+def _summary(r: dict, p: Path) -> dict:
+    keys = ("project", "started", "finished", "ok", "skills", "cost_usd", "duration_ms", "num_turns", "dry", "model", "effort")
+    return {k: r.get(k) for k in keys} | {"file": p.name, "log": p.with_suffix(".log").name if p.with_suffix(".log").exists() else None}
+
+
+def runs_for_project(name: str) -> list[dict]:
+    d = paths.runs_dir()
+    if not d.exists():
+        return []
+    return [_summary(json.loads(p.read_text()), p) for p in sorted(d.glob(f"*-{name}.json"))
+            if not p.name.startswith(".")]
 
 
 def get_run(file: str) -> dict:
     return json.loads((paths.runs_dir() / file).read_text())
 
 
-# ---- watcher -------------------------------------------------------------------------------------
+def get_log(file: str) -> str:
+    p = paths.runs_dir() / file
+    return p.read_text() if p.exists() else ""
+
+
+# ---- file d'attente et état -------------------------------------------------------------------
 
 def _state_file() -> Path:
     return paths.runs_dir() / ".state.json"
@@ -140,17 +180,12 @@ def save_state(state: dict) -> None:
     p.write_text(json.dumps(state, indent=2))
 
 
-def diff(state: dict) -> list[tuple[str, Project | None]]:
-    """Projets dont l'entrée diffère de la dernière appliquée (ou disparus)."""
+def changed_since_last_run(state: dict) -> list[str]:
+    """Projets dont l'entrée du registre diffère de celle du dernier run (indicateur « modifié » du front)."""
     reg = config.registry()
-    changed = []
-    for name, prj in reg.projects.items():
-        if state.get(name, {}).get("hash") != _hash(prj):
-            changed.append((name, prj))
-    for name, st in state.items():
-        if name not in reg.projects and st.get("hash") != "absent":
-            changed.append((name, None))
-    return changed
+    out = [n for n, p in reg.projects.items() if state.get(n, {}).get("hash") != _hash(p)]
+    out += [n for n, st in state.items() if n not in reg.projects and st.get("hash") != "absent"]
+    return out
 
 
 def mark_applied(state: dict, name: str, prj: Project | None, ok: bool) -> None:
@@ -159,27 +194,72 @@ def mark_applied(state: dict, name: str, prj: Project | None, ok: bool) -> None:
     save_state(state)
 
 
-def watch(interval: float = 5.0, once: bool = False, dry: bool = False) -> None:
-    print(f"watch {paths.config_dir() / 'registry.yaml'} toutes les {interval}s", file=sys.stderr)
+def queue_dir() -> Path:
+    d = paths.runs_dir() / "queue"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def enqueue(name: str) -> dict:
+    """Demande un run pour un projet (idempotent : une seule demande en attente par projet)."""
+    p = queue_dir() / f"{name}.json"
+    if p.exists():
+        return json.loads(p.read_text())
+    req = {"project": name, "requested": datetime.now(UTC).isoformat()}
+    p.write_text(json.dumps(req))
+    return req
+
+
+def queued() -> list[str]:
+    return sorted(p.stem for p in queue_dir().glob("*.json"))
+
+
+def running() -> str | None:
+    p = paths.runs_dir() / ".running"
+    return p.read_text().strip() if p.exists() else None
+
+
+def _set_running(name: str | None) -> None:
+    p = paths.runs_dir() / ".running"
+    if name is None:
+        p.unlink(missing_ok=True)
+    else:
+        p.write_text(name)
+
+
+def process_one(dry: bool = False) -> dict | None:
+    """Exécute la plus ancienne demande de la file. Retourne le run, ou None si la file est vide."""
+    files = sorted(queue_dir().glob("*.json"), key=lambda p: p.stat().st_mtime)
+    if not files:
+        return None
+    req = files[0]
+    name = req.stem
+    state = load_state()
+    prj = config.registry().projects.get(name)
+    previous = state.get(name, {}).get("entry")
+    _set_running(name)
+    try:
+        rec = run_project(name, prj, previous, dry=dry)
+    except Exception as e:  # noqa: BLE001 — un run qui plante ne doit pas tuer le service
+        rec = {"project": name, "started": datetime.now(UTC).isoformat(), "ok": False,
+               "result": f"erreur du runner : {e}", "skills": skills.for_project(prj) if prj else []}
+        _save(rec)
+    finally:
+        _set_running(None)
+        req.unlink(missing_ok=True)
+    if not dry:
+        mark_applied(state, name, prj, rec.get("ok", False))
+    return rec
+
+
+def watch(interval: float = 3.0, once: bool = False, dry: bool = False) -> None:
+    """Boucle du service infra-runner : consomme la file, un projet à la fois."""
+    print(f"runner : file {queue_dir()} (toutes les {interval}s)", file=sys.stderr)
     while True:
-        state = load_state()
-        try:
-            changes = diff(state)
-        except Exception as e:  # registre invalide : on attend une correction
-            print(f"registry.yaml invalide : {e}", file=sys.stderr)
-            changes = []
-        for name, prj in changes:
-            previous = state.get(name, {}).get("entry")
-            print(f"→ run {name}", file=sys.stderr)
-            try:
-                rec = run_project(name, prj, previous, dry=dry)
-                ok = rec.get("ok", False)
-            except Exception as e:
-                print(f"run {name} : {e}", file=sys.stderr)
-                ok = False
-            # on marque même en échec : pas de boucle infinie ; l'UI montre l'échec, une nouvelle édition relance
-            if not dry:
-                mark_applied(state, name, prj, ok)
+        rec = process_one(dry=dry)
+        if rec:
+            print(f"run {rec['project']} : {'ok' if rec.get('ok') else 'échec'}", file=sys.stderr)
         if once:
             return
-        time.sleep(interval)
+        if rec is None:
+            time.sleep(interval)

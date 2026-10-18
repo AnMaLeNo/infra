@@ -17,7 +17,8 @@
   .tag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:12px; border:1px solid var(--line); color:var(--muted) }
   .tag.public { color:var(--ok); border-color:var(--ok) } .tag.private { color:var(--acc); border-color:var(--acc) } .tag.none { color:var(--muted) }
   .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; background:var(--muted) }
-  .dot.ok { background:var(--ok) } .dot.ko { background:var(--ko) } .dot.pending { background:var(--warn) }
+  .dot.ok { background:var(--ok) } .dot.ko { background:var(--ko) } .dot.pending { background:var(--warn) } .dot.busy { background:var(--acc); animation: pulse 1s infinite alternate }
+  @keyframes pulse { from { opacity:.4 } to { opacity:1 } }
   a { color:var(--acc); text-decoration:none } a:hover { text-decoration:underline }
   button { background:#21262d; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer }
   button.primary { background:#238636; border-color:#2ea043 } button.danger { color:var(--ko) }
@@ -36,15 +37,16 @@
   <h1>infra</h1>
   <span class="muted" id="hostinfo">…</span>
   <span style="flex:1"></span>
+  <button onclick="openSettings()" id="btn_settings" title="Modèle et effort de claude -p pour tous les runs">⚙ Claude : …</button>
   <button class="primary" onclick="openEditor()">+ Ajouter un projet</button>
 </header>
 <main>
   <section class="panel">
     <table>
-      <thead><tr><th></th><th>Projet</th><th>Service</th><th>Expose</th><th>Previews</th><th>URLs</th><th>Dernier run</th><th></th></tr></thead>
+      <thead><tr><th></th><th>Projet</th><th>Service</th><th>Expose</th><th>Previews</th><th>URLs</th><th>Dernier run</th><th></th><th></th><th></th></tr></thead>
       <tbody id="projects"></tbody>
     </table>
-    <p class="help">Modifier une entrée écrit <code>registry.yaml</code> ; le runner sur l'hôte détecte le changement et lance <code>claude -p</code> avec les skills du projet. Le point : vert = appliqué, orange = en attente du runner, rouge = dernier run en échec.</p>
+    <p class="help">Modifier une entrée écrit <code>registry.yaml</code>, rien de plus. <b>Lancer Claude</b> demande explicitement un run (<code>claude -p</code> + skills du projet) ; le runner les exécute un par un. Le point : vert = conforme au dernier run réussi, orange = modifié depuis le dernier run, rouge = dernier run en échec, bleu = run demandé / en cours.</p>
   </section>
   <aside class="panel">
     <h3 style="margin-top:0">Runs</h3>
@@ -52,6 +54,29 @@
     <pre id="rundetail" class="muted">Clique sur un run pour voir sa sortie.</pre>
   </aside>
 </main>
+
+<dialog id="settings">
+  <form method="dialog" onsubmit="return saveSettings(event)">
+    <h3 style="margin-top:0">Paramètres Claude</h3>
+    <p class="help">Utilisés par <code>claude -p</code> pour <b>tous</b> les runs de cet hôte (setup, modification, retrait). Stockés dans <code>host.yaml → llm</code>.</p>
+    <label>Modèle <span class="muted">(alias ou nom complet)</span></label>
+    <input id="s_model" list="models" required><datalist id="models"><option>sonnet</option><option>opus</option><option>haiku</option></datalist>
+    <label>Effort de raisonnement</label>
+    <select id="s_effort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select>
+    <div class="row" style="margin-top:12px"><span></span><button type="button" onclick="settings.close()">Annuler</button><button class="primary" type="submit">Enregistrer</button></div>
+    <p id="serr" style="color:var(--ko)"></p>
+  </form>
+</dialog>
+
+<dialog id="histdlg" style="width:min(1000px, 96vw)">
+  <h3 id="htitle" style="margin-top:0">Historique</h3>
+  <p class="help">Chronologie : chaque version de l'entrée du registre et chaque run de Claude. Clique sur un run pour voir le prompt, le résumé et le déroulé complet (appels d'outils inclus).</p>
+  <div class="row" style="align-items:flex-start">
+    <table style="flex:1"><tbody id="hitems"></tbody></table>
+    <pre id="hdetail" class="muted" style="flex:1.4; max-height:60vh; white-space:pre-wrap">Sélectionne un élément.</pre>
+  </div>
+  <div class="row" style="margin-top:12px"><span></span><button type="button" onclick="histdlg.close()">Fermer</button></div>
+</dialog>
 
 <dialog id="editor">
   <form method="dialog" onsubmit="return saveProject(event)">
@@ -96,23 +121,72 @@ async function api(path, opts) { const r = await fetch(path, opts); if (!r.ok) t
 async function load() {
   const [h, projects, runs] = await Promise.all([api('/api/host'), api('/api/projects'), api('/api/runs?limit=30')]);
   $('#hostinfo').textContent = `${h.name} · ${h.tailscale_ip} · privé *.${h.private_zone} · public ${h.public_ingress} · v${h.version}`;
+  $('#btn_settings').textContent = `⚙ Claude : ${h.llm.model} / ${h.llm.effort}`;
   $('#projects').innerHTML = Object.entries(projects).map(([name, p]) => {
-    const e = p.entry, dot = !p.applied ? 'pending' : (p.last_ok ? 'ok' : 'ko');
+    const e = p.entry, busy = p.queued || p.running;
+    const dot = busy ? 'busy' : (p.changed ? 'pending' : (p.last_ok ? 'ok' : 'ko'));
+    const title = p.running ? 'run en cours' : p.queued ? 'run demandé, en attente' : p.changed ? (p.never_run ? 'jamais lancé' : 'modifié depuis le dernier run') : (p.last_ok ? 'conforme au dernier run' : 'dernier run en échec');
     const urls = Object.entries(p.urls).map(([k, u]) => `<a href="${u}" target="_blank">${u.replace('https://','')}</a>`).join('<br>');
     return `<tr>
-      <td><span class="dot ${dot}" title="${p.applied ? (p.last_ok ? 'appliqué' : 'dernier run en échec') : 'en attente du runner'}"></span></td>
+      <td><span class="dot ${dot}" title="${title}"></span></td>
       <td><b>${name}</b>${e.enabled ? '' : ' <span class="tag">désactivé</span>'}<br><a class="muted" href="${e.repo}" target="_blank">${e.repo.replace('https://github.com/','')}</a></td>
       <td>${e.service}</td><td><span class="tag ${e.expose}">${e.expose}</span></td><td>${e.previews === 'none' ? '—' : `<span class="tag ${e.previews}">${e.previews}</span>`}</td>
       <td>${urls || '—'}</td>
       <td class="muted">${p.last_at ? new Date(p.last_at).toLocaleString('fr-FR') : '—'}</td>
-      <td class="right"><button onclick='openEditor(${JSON.stringify(name)}, ${JSON.stringify(e)})'>Modifier</button></td></tr>`;
-  }).join('') || '<tr><td colspan="8" class="muted">Aucun projet. Ajoute-en un.</td></tr>';
+      <td class="right"><button class="${p.changed && !busy ? 'primary' : ''}" ${busy ? 'disabled' : ''} onclick='requestRun(${JSON.stringify(name)})' title="Lance claude -p sur ce projet avec ses skills">${p.running ? 'En cours…' : p.queued ? 'En attente' : 'Lancer Claude'}</button></td>
+      <td class="right"><button onclick='openEditor(${JSON.stringify(name)}, ${JSON.stringify(e)})'>Modifier</button></td>
+      <td class="right"><button onclick='openHistory(${JSON.stringify(name)})' title="Versions de la config + tous les runs, avec leurs logs">Historique</button></td></tr>`;
+  }).join('') || '<tr><td colspan="10" class="muted">Aucun projet. Ajoute-en un.</td></tr>';
   $('#runs').innerHTML = runs.map(r => `<tr onclick="showRun('${r.file}')" style="cursor:pointer">
       <td><span class="dot ${r.ok ? 'ok' : 'ko'}"></span>${r.project}${r.dry ? ' <span class="tag">dry</span>' : ''}</td>
       <td class="muted">${new Date(r.started).toLocaleString('fr-FR')}</td>
       <td class="muted right">${r.cost_usd ? r.cost_usd.toFixed(2) + ' $' : ''}</td></tr>`).join('') || '<tr><td class="muted">Aucun run.</td></tr>';
 }
+async function requestRun(name) { await api('/api/projects/' + name + '/run', { method: 'POST' }); load(); }
 async function showRun(f) { $('#rundetail').textContent = await api('/api/runs/' + f); $('#rundetail').classList.remove('muted'); }
+
+async function openSettings() {
+  const s = await api('/api/settings'); $('#s_model').value = s.model; $('#s_effort').value = s.effort; $('#serr').textContent = ''; settings.showModal();
+}
+async function saveSettings(ev) {
+  ev.preventDefault();
+  try { await api('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: $('#s_model').value.trim(), effort: $('#s_effort').value }) }); settings.close(); load(); }
+  catch (e) { $('#serr').textContent = e.message; }
+  return false;
+}
+
+let hist = null;
+const fmt = d => new Date(d).toLocaleString('fr-FR');
+async function openHistory(name) {
+  hist = await api('/api/projects/' + name + '/history');
+  $('#htitle').textContent = `Historique — ${name}`;
+  const items = [...hist.config.map((c, i) => ({ at: c.at, kind: 'config', i })), ...hist.runs.map((r, i) => ({ at: r.started, kind: 'run', i }))]
+    .sort((a, b) => b.at.localeCompare(a.at));
+  $('#hitems').innerHTML = items.map(it => {
+    if (it.kind === 'config') { const c = hist.config[it.i];
+      return `<tr style="cursor:pointer" onclick="showConfig(${it.i})"><td><span class="tag">config</span></td><td>${c.entry ? 'entrée modifiée' : 'retirée du registre'} <span class="muted">(${c.source})</span></td><td class="muted right">${fmt(c.at)}</td></tr>`; }
+    const r = hist.runs[it.i];
+    return `<tr style="cursor:pointer" onclick="showHistRun(${it.i})"><td><span class="dot ${r.ok ? 'ok' : 'ko'}"></span><span class="tag">run</span>${r.dry ? ' <span class="tag">dry</span>' : ''}</td>
+      <td>${r.ok ? 'réussi' : 'échec'} · ${r.model || '?'}/${r.effort || '?'}${r.num_turns ? ' · ' + r.num_turns + ' tours' : ''}${r.cost_usd ? ' · ' + r.cost_usd.toFixed(2) + ' $' : ''}</td><td class="muted right">${fmt(r.started)}</td></tr>`;
+  }).join('') || '<tr><td class="muted">Rien encore pour ce projet.</td></tr>';
+  $('#hdetail').textContent = 'Sélectionne un élément.'; $('#hdetail').classList.add('muted');
+  histdlg.showModal();
+}
+function showConfig(i) {
+  const c = hist.config[i], prev = hist.config[i - 1];
+  $('#hdetail').classList.remove('muted');
+  $('#hdetail').textContent = `# ${fmt(c.at)} · source : ${c.source}\n\n` + (c.entry ? JSON.stringify(c.entry, null, 2) : '(retirée du registre)')
+    + (prev ? `\n\n# version précédente (${fmt(prev.at)})\n` + (prev.entry ? JSON.stringify(prev.entry, null, 2) : '(absente)') : '');
+}
+async function showHistRun(i) {
+  const r = hist.runs[i]; const full = await api('/api/runs/' + r.file + '/full');
+  const log = r.log ? await api('/api/runs/' + r.log + '/log') : '(pas de déroulé : run dry ou ancien)';
+  $('#hdetail').classList.remove('muted');
+  $('#hdetail').textContent = `# run ${fmt(r.started)} — ${full.ok ? 'réussi' : 'échec'} · ${full.model || '?'}/${full.effort || '?'}`
+    + (full.cost_usd ? ` · ${full.cost_usd.toFixed(2)} $` : '') + (full.duration_ms ? ` · ${Math.round(full.duration_ms / 1000)} s` : '')
+    + `\n\n## Résumé de Claude\n${full.result || '—'}\n\n## Prompt\n${full.prompt || '—'}`
+    + (full.stderr ? `\n\n## stderr\n${full.stderr}` : '') + `\n\n## Déroulé complet (stream-json)\n${log}`;
+}
 
 function openEditor(name, e) {
   editing = name || null; e = e || {};
@@ -138,7 +212,7 @@ async function saveProject(ev) {
   return false;
 }
 async function deleteProject() {
-  if (!editing || !confirm(`Retirer ${editing} du registre ? (le runner l'arrêtera ; les données restent)`)) return;
+  if (!editing || !confirm(`Retirer ${editing} du registre ? (puis « Lancer Claude » pour l'arrêter réellement ; les données restent)`)) return;
   await api('/api/projects/' + editing, { method: 'DELETE' }); editor.close(); load();
 }
 load(); setInterval(load, 10000);
