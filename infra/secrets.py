@@ -88,7 +88,7 @@ def check() -> dict[str, str]:
     """Retourne {fichier: 'ok'|'erreur ...'} pour tous les secrets."""
     out = {}
     for p in sorted(secrets_dir().rglob("*")):
-        if not p.is_file():
+        if not p.is_file() or p.name.startswith("."):
             continue
         rel = str(p.relative_to(secrets_dir()))
         try:
