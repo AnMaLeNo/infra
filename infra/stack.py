@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from . import __version__, config, paths, secrets
@@ -69,10 +70,21 @@ def prepare(name: str) -> None:
         os.chmod(acme, 0o600)
         (sd / "certs").mkdir(exist_ok=True)
         _sync_dynamic(sd / "dynamic")
+        src = stack_dir("traefik") / f"traefik.{config.host().public_ingress}.yml"
+        write_private(sd / "traefik.yml", render_static(src.read_text(), stack_env("traefik")), mode=0o644)
     if name == "cloudflared":
         if not secrets.exists("cloudflared.json"):
             raise RuntimeError("secrets/cloudflared.json absent : lance `infra tunnel create`")
         write_private(sd / "credentials.json", secrets.decrypt("cloudflared.json"))
+
+
+_ENV_TPL = re.compile(r"\{\{\s*env\s+`([A-Z0-9_]+)`\s*\}\}")
+
+
+def render_static(text: str, env: dict[str, str]) -> str:
+    """La config statique Traefik n'est pas templatée par Traefik (seule la dynamique l'est) :
+    on remplace nous-mêmes les `{{ env `X` }}` avant de l'écrire dans STACK_STATE."""
+    return _ENV_TPL.sub(lambda m: env.get(m.group(1), ""), text)
 
 
 def _sync_dynamic(dst: Path) -> None:

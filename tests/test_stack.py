@@ -18,3 +18,10 @@ def test_sync_dynamic_merges_tool_and_host(env):
     stack._sync_dynamic(dst)
     names = sorted(p.name for p in dst.glob("*.yml"))
     assert names == ["dashboard.yml", "ibkr.yml"]
+
+
+def test_render_static_replaces_env_templates():
+    src = "email: \"{{ env `ACME_EMAIL` }}\"\nmain: \"{{ env `PRIVATE_ZONE` }}\"\nsans: [\"*.{{ env `PRIVATE_ZONE` }}\"]\n"
+    out = stack.render_static(src, {"ACME_EMAIL": "a@b.c", "PRIVATE_ZONE": "pi.example.com"})
+    assert out == 'email: "a@b.c"\nmain: "pi.example.com"\nsans: ["*.pi.example.com"]\n'
+    assert "{{" not in out

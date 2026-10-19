@@ -10,15 +10,14 @@ services:
       TRAEFIK_NET_GATEWAY: ${TRAEFIK_NET_GATEWAY}
       DOCKER_API_VERSION: "1.44"   # Docker ≥ 29 refuse l'API 1.24 négociée par défaut par Traefik
     command:
-      - --configFile=/etc/traefik/traefik.${PUBLIC_INGRESS}.yml
+      - --configFile=/etc/traefik/traefik.yml
     ports:
       # privé : uniquement sur l'IP Tailscale. L'entrypoint `tunnel` (:8080) n'est PAS publié.
       - "${TAILSCALE_IP}:443:443"
       - "${TAILSCALE_IP}:80:80"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik.cloudflare-tunnel.yml:/etc/traefik/traefik.cloudflare-tunnel.yml:ro
-      - ./traefik.direct.yml:/etc/traefik/traefik.direct.yml:ro
+      - ${STACK_STATE}/traefik.yml:/etc/traefik/traefik.yml:ro   # = traefik.${PUBLIC_INGRESS}.yml rendu par `infra stack up`
       - ${STACK_STATE}/dynamic:/etc/traefik/dynamic:ro   # = tool/stack/traefik/dynamic + <config>/stack/traefik/dynamic
       - ${STACK_STATE}/certs:/etc/traefik/certs:ro       # certs fournis par l'hôte (ex. `tailscale cert`)
       - ${STACK_STATE}/acme.json:/acme.json
