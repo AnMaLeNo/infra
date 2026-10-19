@@ -8,6 +8,7 @@ services:
       PRIVATE_ZONE: ${PRIVATE_ZONE}
       ACME_EMAIL: ${ACME_EMAIL}
       TRAEFIK_NET_GATEWAY: ${TRAEFIK_NET_GATEWAY}
+      DOCKER_API_VERSION: "1.44"   # Docker ≥ 29 refuse l'API 1.24 négociée par défaut par Traefik
     command:
       - --configFile=/etc/traefik/traefik.${PUBLIC_INGRESS}.yml
     ports:
