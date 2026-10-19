@@ -34,7 +34,9 @@ usermod -aG docker,infra ai-infra
 mkdir -p /srv/apps /srv/data /srv/stack "$CONFIG_DIR/runs"
 chgrp -R infra /srv/apps /srv/data /srv/stack "$CONFIG_DIR" 2>/dev/null || true
 chmod -R g+rwX /srv/apps /srv/data /srv/stack "$CONFIG_DIR/runs"
-chmod g+s /srv/apps /srv/data /srv/stack
+chmod g+s /srv/apps /srv/data /srv/stack "$CONFIG_DIR/runs"
+# UI (conteneur, uid ai-infra) et runner écrivent la config et la file : groupe infra en écriture
+chmod g+rw "$CONFIG_DIR/registry.yaml" "$CONFIG_DIR/host.yaml"
 git config --system --add safe.directory '*' 2>/dev/null || true
 cat > /etc/sudoers.d/ai-infra <<'SUDO'
 Defaults:ai-infra log_input, log_output

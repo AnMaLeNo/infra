@@ -1,7 +1,9 @@
 """Stacks d'infra partagées (tool/stack/<nom>) : traefik, cloudflared, ui, mosquitto…"""
 from __future__ import annotations
 
+import grp
 import os
+import pwd
 import re
 from pathlib import Path
 
@@ -43,6 +45,20 @@ def network_gateway() -> str:
     return out or NETWORK_SUBNET.rsplit(".", 1)[0] + ".1"
 
 
+def _uid(user: str) -> str:
+    try:
+        return str(pwd.getpwnam(user).pw_uid)
+    except KeyError:
+        return "0"
+
+
+def _gid(group: str) -> str:
+    try:
+        return str(grp.getgrnam(group).gr_gid)
+    except KeyError:
+        return "0"
+
+
 def stack_env(name: str) -> dict[str, str]:
     h = config.host()
     ienv = secrets.infra_env()
@@ -57,6 +73,11 @@ def stack_env(name: str) -> dict[str, str]:
         "TUNNEL_ID": h.cloudflare.tunnel_id,
         "TRAEFIK_NET_GATEWAY": network_gateway(),
         "INFRA_VERSION": os.environ.get("INFRA_VERSION", __version__),
+        # l'UI écrit registry.yaml et runs/queue : même identité que le runner, sinon les fichiers
+        # créés par root dans le conteneur sont illisibles/insupprimables pour ai-infra
+        "INFRA_UID": _uid("ai-infra"),
+        "INFRA_GID": _gid("infra"),
+        "DOCKER_GID": _gid("docker"),
     }
     return env
 

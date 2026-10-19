@@ -25,3 +25,9 @@ def test_render_static_replaces_env_templates():
     out = stack.render_static(src, {"ACME_EMAIL": "a@b.c", "PRIVATE_ZONE": "pi.example.com"})
     assert out == 'email: "a@b.c"\nmain: "pi.example.com"\nsans: ["*.pi.example.com"]\n'
     assert "{{" not in out
+
+
+def test_ids_fall_back_to_root_when_unknown():
+    assert stack._uid("compte-inexistant-infra") == "0"
+    assert stack._gid("groupe-inexistant-infra") == "0"
+    assert stack._uid("root") == "0"
