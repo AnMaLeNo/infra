@@ -10,11 +10,16 @@ from .util import dump_dotenv, run, run_json, write_private
 REQUIRED = {"traefik", "ui"}
 
 
+NETWORK = "traefik-net"
+NETWORK_SUBNET = "172.30.0.0/24"  # fixe à la création : la passerelle sert aux ponts vers l'hôte
+
+
 def stack_dir(name: str) -> Path:
-    d = paths.tool_dir() / "stack" / name
-    if not d.exists():
-        raise FileNotFoundError(f"stack inconnue : {name}")
-    return d
+    """Stack de l'hôte (<config>/stack/<nom>) prioritaire sur celle de l'outil (tool/stack/<nom>)."""
+    for d in (paths.config_dir() / "stack" / name, paths.tool_dir() / "stack" / name):
+        if (d / "docker-compose.yml").exists():
+            return d
+    raise FileNotFoundError(f"stack inconnue : {name}")
 
 
 def state_dir(name: str) -> Path:
@@ -25,8 +30,16 @@ def state_dir(name: str) -> Path:
 
 def ensure_network() -> None:
     nets = run(["docker", "network", "ls", "--format", "{{.Name}}"], quiet=True).stdout.split()
-    if "traefik-net" not in nets:
-        run(["docker", "network", "create", "traefik-net"], quiet=True)
+    if NETWORK not in nets:
+        run(["docker", "network", "create", "--subnet", NETWORK_SUBNET, NETWORK], quiet=True)
+
+
+def network_gateway() -> str:
+    """IP de l'hôte vue depuis traefik-net (cible des services legacy qui n'écoutent que sur l'hôte)."""
+    ensure_network()
+    out = run(["docker", "network", "inspect", NETWORK, "-f",
+               "{{(index .IPAM.Config 0).Gateway}}"], quiet=True).stdout.strip()
+    return out or NETWORK_SUBNET.rsplit(".", 1)[0] + ".1"
 
 
 def stack_env(name: str) -> dict[str, str]:
@@ -41,6 +54,7 @@ def stack_env(name: str) -> dict[str, str]:
         "ACME_EMAIL": ienv.get("ACME_EMAIL", ""),
         "CF_API_TOKEN": ienv.get("CF_API_TOKEN", ""),
         "TUNNEL_ID": h.cloudflare.tunnel_id,
+        "TRAEFIK_NET_GATEWAY": network_gateway(),
         "INFRA_VERSION": os.environ.get("INFRA_VERSION", __version__),
     }
     return env
@@ -53,10 +67,29 @@ def prepare(name: str) -> None:
         if not acme.exists():
             acme.write_text("{}")
         os.chmod(acme, 0o600)
+        (sd / "certs").mkdir(exist_ok=True)
+        _sync_dynamic(sd / "dynamic")
     if name == "cloudflared":
         if not secrets.exists("cloudflared.json"):
             raise RuntimeError("secrets/cloudflared.json absent : lance `infra tunnel create`")
         write_private(sd / "credentials.json", secrets.decrypt("cloudflared.json"))
+
+
+def _sync_dynamic(dst: Path) -> None:
+    """Config dynamique Traefik servie = fichiers de l'outil + ceux de l'hôte (<config>/stack/traefik/dynamic)."""
+    dst.mkdir(exist_ok=True)
+    srcs = [paths.tool_dir() / "stack" / "traefik" / "dynamic",
+            paths.config_dir() / "stack" / "traefik" / "dynamic"]
+    wanted = {}
+    for src in srcs:
+        if src.is_dir():
+            for f in sorted(src.glob("*.yml")):
+                wanted[f.name] = f.read_text()
+    for old in dst.glob("*.yml"):
+        if old.name not in wanted:
+            old.unlink()
+    for fname, content in wanted.items():
+        write_private(dst / fname, content, mode=0o644)
 
 
 def compose_cmd(name: str) -> list[str]:

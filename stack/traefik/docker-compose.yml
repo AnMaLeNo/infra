@@ -7,6 +7,7 @@ services:
       CF_DNS_API_TOKEN: ${CF_API_TOKEN}
       PRIVATE_ZONE: ${PRIVATE_ZONE}
       ACME_EMAIL: ${ACME_EMAIL}
+      TRAEFIK_NET_GATEWAY: ${TRAEFIK_NET_GATEWAY}
     command:
       - --configFile=/etc/traefik/traefik.${PUBLIC_INGRESS}.yml
     ports:
@@ -17,7 +18,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.cloudflare-tunnel.yml:/etc/traefik/traefik.cloudflare-tunnel.yml:ro
       - ./traefik.direct.yml:/etc/traefik/traefik.direct.yml:ro
-      - ./dynamic:/etc/traefik/dynamic:ro
+      - ${STACK_STATE}/dynamic:/etc/traefik/dynamic:ro   # = tool/stack/traefik/dynamic + <config>/stack/traefik/dynamic
+      - ${STACK_STATE}/certs:/etc/traefik/certs:ro       # certs fournis par l'hôte (ex. `tailscale cert`)
       - ${STACK_STATE}/acme.json:/acme.json
     networks:
       - traefik-net
