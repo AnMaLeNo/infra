@@ -12,7 +12,7 @@ description: Joignable depuis internet sur https://<domain>.<public_zone> via le
 - Si `previews: public`, voir `previews/`.
 
 ## Outils utiles
-`host_info`, `traefik_labels`, `compose_override`, `dns_ensure`, `dns_list`, `project_status`, `docker logs cloudflared`.
+`host_info`, `traefik_labels`, `compose_override`, `dns_ensure`, `dns_list`, `project_status`, `docker logs infra-cloudflared`.
 
 ## Pièges connus
 - `dns_ensure` renvoie `conflict` : un enregistrement existe déjà avec une autre cible (ancien tunnel, ancienne IP). Ne force (`force=True`) que si tu es sûr que l'ancienne cible est obsolète (ex. migration legacy explicitement demandée) ; sinon demande.
