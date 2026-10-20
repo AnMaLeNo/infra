@@ -96,10 +96,15 @@ def prepare(name: str) -> None:
     if name == "cloudflared":
         if not secrets.exists("cloudflared.json"):
             raise RuntimeError("secrets/cloudflared.json absent : lance `infra tunnel create`")
-        write_private(sd / "credentials.json", secrets.decrypt("cloudflared.json"))
+        creds = sd / "credentials.json"
+        write_private(creds, secrets.decrypt("cloudflared.json"), mode=0o400)
+        os.chown(creds, CLOUDFLARED_UID, 0)
         src = stack_dir("cloudflared") / "config.yml"
         write_private(sd / "config.yml", render_static(src.read_text(), stack_env("cloudflared")), mode=0o644)
 
+
+# l'image officielle cloudflared tourne en `nonroot` (uid 65532) : le fichier de credentials doit lui appartenir
+CLOUDFLARED_UID = 65532
 
 _ENV_TPL = re.compile(r"\{\{\s*env\s+`([A-Z0-9_]+)`\s*\}\}")
 
