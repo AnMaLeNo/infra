@@ -97,14 +97,17 @@ def prepare(name: str) -> None:
         if not secrets.exists("cloudflared.json"):
             raise RuntimeError("secrets/cloudflared.json absent : lance `infra tunnel create`")
         write_private(sd / "credentials.json", secrets.decrypt("cloudflared.json"))
+        src = stack_dir("cloudflared") / "config.yml"
+        write_private(sd / "config.yml", render_static(src.read_text(), stack_env("cloudflared")), mode=0o644)
 
 
 _ENV_TPL = re.compile(r"\{\{\s*env\s+`([A-Z0-9_]+)`\s*\}\}")
 
 
 def render_static(text: str, env: dict[str, str]) -> str:
-    """La config statique Traefik n'est pas templatée par Traefik (seule la dynamique l'est) :
-    on remplace nous-mêmes les `{{ env `X` }}` avant de l'écrire dans STACK_STATE."""
+    """Config statique Traefik et config.yml de cloudflared ne sont templatées ni par Traefik (seule la
+    dynamique l'est) ni par cloudflared (`${X}` est pris littéralement) : on remplace nous-mêmes
+    les `{{ env `X` }}` avant d'écrire le fichier dans STACK_STATE."""
     return _ENV_TPL.sub(lambda m: env.get(m.group(1), ""), text)
 
 
