@@ -4,6 +4,8 @@ services:
     image: ghcr.io/anmaleno/infra:${INFRA_VERSION}
     container_name: infra-ui
     restart: unless-stopped
+    user: "${INFRA_UID}:${INFRA_GID}"
+    group_add: ["${DOCKER_GID}"]
     command: infra serve --host 0.0.0.0 --port 8000
     environment:
       INFRA_CONFIG_DIR: /srv/infra
