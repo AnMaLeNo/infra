@@ -82,7 +82,10 @@ def stack_env(name: str) -> dict[str, str]:
     return env
 
 
-def prepare(name: str) -> None:
+def prepare(name: str) -> bool:
+    """Rend les fichiers de la stack dans STACK_STATE. Retourne True si un fichier a changé : les conteneurs
+    ne voient pas un fichier remplacé (rename) derrière un bind mount, il faut alors les recréer."""
+    changed = False
     sd = state_dir(name)
     if name == "traefik":
         acme = sd / "acme.json"
@@ -92,15 +95,16 @@ def prepare(name: str) -> None:
         (sd / "certs").mkdir(exist_ok=True)
         _sync_dynamic(sd / "dynamic")
         src = stack_dir("traefik") / f"traefik.{config.host().public_ingress}.yml"
-        write_private(sd / "traefik.yml", render_static(src.read_text(), stack_env("traefik")), mode=0o644)
+        changed |= write_private(sd / "traefik.yml", render_static(src.read_text(), stack_env("traefik")), mode=0o644)
     if name == "cloudflared":
         if not secrets.exists("cloudflared.json"):
             raise RuntimeError("secrets/cloudflared.json absent : lance `infra tunnel create`")
         creds = sd / "credentials.json"
-        write_private(creds, secrets.decrypt("cloudflared.json"), mode=0o400)
+        changed |= write_private(creds, secrets.decrypt("cloudflared.json"), mode=0o400)
         os.chown(creds, CLOUDFLARED_UID, 0)
         src = stack_dir("cloudflared") / "config.yml"
-        write_private(sd / "config.yml", render_static(src.read_text(), stack_env("cloudflared")), mode=0o644)
+        changed |= write_private(sd / "config.yml", render_static(src.read_text(), stack_env("cloudflared")), mode=0o644)
+    return changed
 
 
 # l'image officielle cloudflared tourne en `nonroot` (uid 65532) : le fichier de credentials doit lui appartenir
@@ -145,8 +149,8 @@ def compose_cmd(name: str) -> list[str]:
 
 def up(name: str) -> None:
     ensure_network()
-    prepare(name)
-    run([*compose_cmd(name), "up", "-d", "--remove-orphans", "--quiet-pull"], capture=False)
+    recreate = ["--force-recreate"] if prepare(name) else []
+    run([*compose_cmd(name), "up", "-d", "--remove-orphans", "--quiet-pull", *recreate], capture=False)
 
 
 def down(name: str) -> None:

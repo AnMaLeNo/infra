@@ -5,8 +5,7 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
     volumes:
-      - ${STACK_STATE}/config.yml:/etc/cloudflared/config.yml:ro
-      - ${STACK_STATE}/credentials.json:/etc/cloudflared/credentials.json:ro
+      - ${STACK_STATE}:/etc/cloudflared:ro
     environment:
       TUNNEL_ID: ${TUNNEL_ID}
     networks:
