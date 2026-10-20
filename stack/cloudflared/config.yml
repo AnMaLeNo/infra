@@ -1,7 +1,8 @@
 # Tunnel géré localement : cette config est la source de vérité (pas le dashboard).
+# Rendue par `infra stack up` dans STACK_STATE (cloudflared ne substitue pas les variables).
 # Une seule règle : tout hostname dont le CNAME pointe sur ce tunnel arrive sur Traefik,
 # qui route par Host(). Rendre une app publique = créer son CNAME (infra dns ensure).
-tunnel: ${TUNNEL_ID}
+tunnel: {{ env `TUNNEL_ID` }}
 credentials-file: /etc/cloudflared/credentials.json
 no-autoupdate: true
 

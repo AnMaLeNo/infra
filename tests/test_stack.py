@@ -31,3 +31,9 @@ def test_ids_fall_back_to_root_when_unknown():
     assert stack._uid("compte-inexistant-infra") == "0"
     assert stack._gid("groupe-inexistant-infra") == "0"
     assert stack._uid("root") == "0"
+
+
+def test_cloudflared_config_is_rendered():
+    src = (paths.tool_dir() / "stack" / "cloudflared" / "config.yml").read_text()
+    out = stack.render_static(src, {"TUNNEL_ID": "0000-1111"})
+    assert "tunnel: 0000-1111\n" in out and "{{" not in out and "${" not in out
