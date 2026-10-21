@@ -8,7 +8,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -18,7 +17,7 @@ from pathlib import Path
 
 import yaml
 
-from . import compose, config, paths, secrets, skills
+from . import compose, config, paths, secrets, skills, tools
 from .models import Project
 
 ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,mcp__infra"
@@ -71,23 +70,25 @@ def build_prompt(name: str, prj: Project | None, previous: dict | None) -> str:
         "ne modifie pas le repo du projet sauf cas prévu par un skill (PR). Termine par un résumé : ce qui a été fait,",
         "les URLs, ce que tu as dû faire à la main (candidats à devenir des tools), ce qu'il reste à un humain.",
         "",
-        "Dernière ligne de ta réponse, exactement l'une de : `ÉTAT FINAL : ok` (état cible atteint et vérifié),",
-        "`ÉTAT FINAL : bloqué` (il manque quelque chose qu'un humain doit fournir, rien n'est cassé),",
-        "`ÉTAT FINAL : échec` (tu as échoué ou laissé quelque chose en mauvais état). Sans cette ligne le run compte comme échec.",
+        f"Clôture obligatoire : termine par UN appel au tool `run_report(project={name!r}, status=ok|bloqué|échec, summary, needs_human)`.",
+        "`ok` seulement si l'état cible est atteint et vérifié ; `bloqué` s'il manque quelque chose à un humain (rien de cassé) ;",
+        "`échec` sinon. Sans cet appel, le run compte comme échec.",
     ]
     return "\n".join(lines)
 
 
-_FINAL = re.compile(r"ÉTAT FINAL\s*:\s*\**\s*(ok|bloqué|bloque|échec|echec)\b", re.I)
-
-
-def final_status(result: str) -> str:
-    """Lit la ligne `ÉTAT FINAL : ok|bloqué|échec` demandée à Claude (la dernière compte). Absente → `inconnu`."""
-    found = _FINAL.findall(result or "")
-    if not found:
-        return "inconnu"
-    v = found[-1].lower()
-    return {"bloque": "bloqué", "echec": "échec"}.get(v, v)
+def read_report(name: str) -> dict:
+    """Rapport déposé par le tool MCP `run_report` pendant le run. Absent ou pour un autre projet → statut `inconnu`."""
+    p = tools.report_path()
+    if not p.exists():
+        return {"status": "inconnu"}
+    try:
+        rep = json.loads(p.read_text())
+    except json.JSONDecodeError:
+        return {"status": "inconnu"}
+    if rep.get("project") != name or rep.get("status") not in ("ok", "bloqué", "échec"):
+        return {"status": "inconnu"}
+    return rep
 
 
 def claude_bin() -> str:
@@ -120,6 +121,7 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
     cmd = [claude_bin(), "-p", prompt, "--output-format", "stream-json", "--verbose",
            "--model", llm.model, "--effort", llm.effort, "--allowedTools", ALLOWED_TOOLS,
            "--permission-mode", "acceptEdits", "--mcp-config", str(mcp_cfg), "--strict-mcp-config"]
+    tools.report_path().unlink(missing_ok=True)  # jamais réutiliser le rapport d'un run précédent
     cp = subprocess.run(cmd, check=False, cwd=paths.config_dir(), env=env, text=True, capture_output=True)
     secret_values = list(ienv.values())
     result_text, out = "", None
@@ -139,8 +141,11 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
         rec["is_error"] = True
     rec["result"] = secrets.mask(result_text, secret_values)
     rec["stderr"] = secrets.mask(cp.stderr[-4000:], secret_values)
-    rec["status"] = final_status(result_text)
-    # claude -p sort 0 même quand il s'est déclaré bloqué : c'est sa dernière ligne qui fait foi
+    rep = read_report(name)
+    rec["status"] = rep["status"]
+    rec["needs_human"] = secrets.mask(rep.get("needs_human") or "", secret_values)
+    rec["report"] = secrets.mask(rep.get("summary") or "", secret_values)
+    # claude -p sort 0 même quand il s'est déclaré bloqué : c'est son appel à run_report qui fait foi
     rec["ok"] = cp.returncode == 0 and not rec.get("is_error") and rec["status"] == "ok"
     rec["finished"] = datetime.now(UTC).isoformat()
     p = _save(rec)

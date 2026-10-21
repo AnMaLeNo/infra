@@ -2,6 +2,11 @@
 et lève une erreur explicite quand elle ne s'applique pas (le LLM fait alors autrement)."""
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Literal
+
 from . import compose, config, dns, paths, secrets, stack
 from .render import Target, missing_env_vars, render_env, traefik_labels
 from .render import render as _render
@@ -117,3 +122,20 @@ def skills_list() -> dict:
 
 
 
+
+
+def report_path() -> Path:
+    return paths.runs_dir() / ".report.json"
+
+
+def run_report(project: str, status: Literal["ok", "bloqué", "échec"], summary: str, needs_human: str = "") -> dict:
+    """Clôture ton run : à appeler UNE fois, en dernier. `ok` = état cible atteint et vérifié ; `bloqué` = il manque quelque
+    chose qu'un humain doit fournir (dis quoi dans `needs_human`), rien n'est cassé ; `échec` = tu n'as pas réussi ou tu as
+    laissé quelque chose en mauvais état. Sans cet appel, le run compte comme échec. `summary` = ce qui a été fait, les URLs,
+    ce que tu as dû faire à la main (candidats à devenir des tools)."""
+    rep = {"project": project, "status": status, "summary": summary, "needs_human": needs_human,
+           "at": datetime.now(UTC).isoformat()}
+    p = report_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(rep, ensure_ascii=False))
+    return rep

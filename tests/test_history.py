@@ -39,13 +39,16 @@ def test_runs_for_project_and_log(env):
     assert runner.runs_for_project("site-client") == []
 
 
-def test_final_status_parsing():
-    from infra.runner import final_status
+def test_run_report_and_read(env):
+    from infra import runner, tools
 
-    assert final_status("blabla\n\nÉTAT FINAL : ok") == "ok"
-    assert final_status("…\n**ÉTAT FINAL : bloqué**") == "bloqué"
-    assert final_status("ÉTAT FINAL : ok\nfinalement non\nÉTAT FINAL : échec") == "échec"
-    assert final_status("rien") == "inconnu"
+    assert runner.read_report("catacombes") == {"status": "inconnu"}
+    tools.run_report("catacombes", "bloqué", "rien fait", needs_human="token GitHub")
+    rep = runner.read_report("catacombes")
+    assert rep["status"] == "bloqué" and rep["needs_human"] == "token GitHub"
+    assert runner.read_report("autre") == {"status": "inconnu"}  # rapport d'un autre projet : ignoré
+    tools.report_path().write_text('{"project": "catacombes", "status": "peut-être"}')
+    assert runner.read_report("catacombes") == {"status": "inconnu"}
 
 
 def test_git_env_with_and_without_token(env, monkeypatch):
