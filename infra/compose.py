@@ -34,7 +34,8 @@ def fetch(t: Target) -> str:
             hint = ("GITHUB_TOKEN est défini mais refusé : vérifie ses droits (Contents) sur ce repo" if "GH_TOKEN" in env
                     else "repo privé ou URL fausse ; pour un repo privé : `infra secrets set infra.env GITHUB_TOKEN` "
                          "(token fine-grained, Contents read)")
-            raise RuntimeError(f"clone de {t.project.repo} impossible — {hint}. {e}") from e
+            msg = secrets.mask(str(e), [env.get("GH_TOKEN", "")])  # git peut citer l'URL réécrite (token inclus)
+            raise RuntimeError(f"clone de {t.project.repo} impossible — {hint}. {msg}") from e
     run(["git", "-C", str(repo), "fetch", "--quiet", "--prune", "origin", ref], quiet=True, env=env)
     run(["git", "-C", str(repo), "checkout", "--quiet", "--detach", "FETCH_HEAD"], quiet=True)
     run(["git", "-C", str(repo), "clean", "-fdq", "-e", ".env"], quiet=True)
