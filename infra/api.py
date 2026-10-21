@@ -53,7 +53,7 @@ def projects():
         out[name] = {"entry": prj.model_dump(), "decided": prj.decided(), "urls": t.urls, "skills": skills.for_project(prj),
                      "changed": st.get("hash") != runner._hash(prj), "never_run": "hash" not in st,
                      "queued": name in queued, "running": running == name,
-                     "last_ok": st.get("ok"), "last_at": st.get("at")}
+                     "last_ok": st.get("ok"), "last_status": st.get("status"), "last_at": st.get("at")}
     return out
 
 

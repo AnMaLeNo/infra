@@ -46,7 +46,7 @@
       <thead><tr><th></th><th>Projet</th><th>Service</th><th>Expose</th><th>Previews</th><th>URLs</th><th>Dernier run</th><th></th><th></th><th></th></tr></thead>
       <tbody id="projects"></tbody>
     </table>
-    <p class="help">Modifier une entrée écrit <code>registry.yaml</code>, rien de plus. <b>Lancer Claude</b> demande explicitement un run (<code>claude -p</code> + skills du projet) ; le runner les exécute un par un. Le point : vert = conforme au dernier run réussi, orange = modifié depuis le dernier run, rouge = dernier run en échec, bleu = run demandé / en cours.</p>
+    <p class="help">Modifier une entrée écrit <code>registry.yaml</code>, rien de plus. <b>Lancer Claude</b> demande explicitement un run (<code>claude -p</code> + skills du projet) ; le runner les exécute un par un. Le point : vert = conforme au dernier run réussi, orange = modifié depuis le dernier run, rouge = dernier run en échec ou bloqué (statut déclaré par Claude via le tool <code>run_report</code>), bleu = run demandé / en cours.</p>
   </section>
   <aside class="panel">
     <h3 style="margin-top:0">Runs</h3>
@@ -129,7 +129,7 @@ async function load() {
   $('#projects').innerHTML = Object.entries(projects).map(([name, p]) => {
     const e = p.entry, busy = p.queued || p.running;
     const dot = busy ? 'busy' : (p.changed ? 'pending' : (p.last_ok ? 'ok' : 'ko'));
-    const title = p.running ? 'run en cours' : p.queued ? 'run demandé, en attente' : p.changed ? (p.never_run ? 'jamais lancé' : 'modifié depuis le dernier run') : (p.last_ok ? 'conforme au dernier run' : 'dernier run en échec');
+    const title = p.running ? 'run en cours' : p.queued ? 'run demandé, en attente' : p.changed ? (p.never_run ? 'jamais lancé' : 'modifié depuis le dernier run') : (p.last_ok ? 'conforme au dernier run' : p.last_status === 'bloqué' ? 'dernier run bloqué : Claude attend quelque chose d\'un humain (voir Historique)' : 'dernier run en échec');
     const urls = Object.entries(p.urls).map(([k, u]) => `<a href="${u}" target="_blank">${u.replace('https://','')}</a>`).join('<br>');
     return `<tr>
       <td><span class="dot ${dot}" title="${title}"></span></td>
@@ -142,7 +142,7 @@ async function load() {
       <td class="right"><button onclick='openHistory(${js(name)})' title="Versions de la config + tous les runs, avec leurs logs">Historique</button></td></tr>`;
   }).join('') || '<tr><td colspan="10" class="muted">Aucun projet. Ajoute-en un.</td></tr>';
   $('#runs').innerHTML = runs.map(r => `<tr onclick="showRun('${r.file}')" style="cursor:pointer">
-      <td><span class="dot ${r.ok ? 'ok' : 'ko'}"></span>${r.project}${r.dry ? ' <span class="tag">dry</span>' : ''}</td>
+      <td><span class="dot ${r.ok ? 'ok' : 'ko'}"></span>${r.project}${r.dry ? ' <span class="tag">dry</span>' : ''}${r.status && r.status !== 'ok' ? ` <span class="tag" title="statut déclaré par Claude (run_report)">${r.status}</span>` : ''}</td>
       <td class="muted">${new Date(r.started).toLocaleString('fr-FR')}</td>
       <td class="muted right">${r.cost_usd ? r.cost_usd.toFixed(2) + ' $' : ''}</td></tr>`).join('') || '<tr><td class="muted">Aucun run.</td></tr>';
 }

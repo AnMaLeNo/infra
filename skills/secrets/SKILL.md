@@ -8,7 +8,7 @@ Tout secret vit chiffré dans `<config>/secrets/` (déchiffrable par la clé age
 ## Où
 | Fichier chiffré | Contenu |
 |---|---|
-| `secrets/infra.env` | `CF_API_TOKEN`, `CF_ZONE_ID`, `CF_ACCOUNT_ID`, `ACME_EMAIL`, `TS_AUTHKEY` (opt.), `CLAUDE_CODE_OAUTH_TOKEN` |
+| `secrets/infra.env` | `CF_API_TOKEN`, `CF_ZONE_ID`, `CF_ACCOUNT_ID`, `ACME_EMAIL`, `TS_AUTHKEY` (opt.), `CLAUDE_CODE_OAUTH_TOKEN`, `GITHUB_TOKEN` (opt. : repos privés + PR ; token fine-grained Contents + Pull requests read/write, injecté par l'outil dans `repo_sync` et dans `git`/`gh` du run, jamais écrit sur disque) |
 | `secrets/cloudflared.json` | credentials du tunnel (`infra tunnel create`) |
 | `secrets/projects/<P>.env` | `.env` du projet → `/srv/apps/<P>/.env` |
 | `secrets/projects/<P>.preview.env` | surcharges previews |

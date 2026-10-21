@@ -23,6 +23,7 @@ server.tool(name="dns_prune")(tools.dns_prune)
 server.tool(name="dns_list")(tools.dns_list)
 server.tool(name="stack_status")(tools.stack_status)
 server.tool(name="skills_list")(tools.skills_list)
+server.tool(name="run_report")(tools.run_report)
 
 
 def main() -> None:

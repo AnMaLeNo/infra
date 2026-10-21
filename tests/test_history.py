@@ -37,3 +37,26 @@ def test_runs_for_project_and_log(env):
     assert len(runs) == 1 and runs[0]["log"] == p.with_suffix(".log").name and runs[0]["model"] == "sonnet"
     assert "fait" in runner.get_log(runs[0]["log"])
     assert runner.runs_for_project("site-client") == []
+
+
+def test_run_report_and_read(env):
+    from infra import runner, tools
+
+    assert runner.read_report("catacombes") == {"status": "inconnu"}
+    tools.run_report("catacombes", "bloqué", "rien fait", needs_human="token GitHub")
+    rep = runner.read_report("catacombes")
+    assert rep["status"] == "bloqué" and rep["needs_human"] == "token GitHub"
+    assert runner.read_report("autre") == {"status": "inconnu"}  # rapport d'un autre projet : ignoré
+    tools.report_path().write_text('{"project": "catacombes", "status": "peut-être"}')
+    assert runner.read_report("catacombes") == {"status": "inconnu"}
+
+
+def test_git_env_with_and_without_token(env, monkeypatch):
+    from infra import compose, secrets
+
+    monkeypatch.setattr(secrets, "infra_env", lambda: {})
+    assert compose.git_env() == {"GIT_TERMINAL_PROMPT": "0"}
+    monkeypatch.setattr(secrets, "infra_env", lambda: {"GITHUB_TOKEN": "ghp_x"})
+    e = compose.git_env()
+    assert e["GH_TOKEN"] == "ghp_x" and e["GIT_CONFIG_VALUE_0"] == "https://github.com/"
+    assert "x-access-token:ghp_x@github.com" in e["GIT_CONFIG_KEY_0"]
