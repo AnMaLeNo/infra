@@ -31,7 +31,6 @@ projects:
   unused:
     repo: https://github.com/AnMaLeNo/Unused
     enabled: true
-    service: compose
     expose: none
     env: true
 

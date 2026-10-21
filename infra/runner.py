@@ -26,7 +26,7 @@ ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,mcp__infra"
 def _hash(prj: Project | None) -> str:
     if prj is None:
         return "absent"
-    return hashlib.sha256(json.dumps(prj.model_dump(), sort_keys=True).encode()).hexdigest()[:16]
+    return hashlib.sha256(json.dumps(prj.intent(), sort_keys=True).encode()).hexdigest()[:16]
 
 
 def build_prompt(name: str, prj: Project | None, previous: dict | None) -> str:
@@ -50,6 +50,15 @@ def build_prompt(name: str, prj: Project | None, previous: dict | None) -> str:
         "",
         "Skills à satisfaire :",
         *[f"- {rel} → {p}" for rel, p in sk.items()],
+        "",
+        *([
+            "`service` n'est pas fixé dans le registre : regarde le repo et choisis `compose` (il a — ou tu lui écris — un",
+            "docker-compose.yml) ou `static` (fichiers/ build servis par nginx), écris ton choix avec registry_set, puis satisfais",
+            "le skill service/<choix> correspondant (l'autre est fourni pour que tu puisses comparer).", "",
+        ] if prj is not None and prj.enabled and prj.service is None else []),
+        "Le *comment* est à toi : `container`, `port`, `compose_file`, `build`, `static_dir` sont des constats que tu",
+        "déduis du repo (compose, Dockerfile, package.json…) et que tu écris dans le registre avec registry_set — l'utilisateur",
+        "ne les saisit pas et ne les connaît pas.",
         "",
         "Tu disposes du serveur MCP `infra` (tools atomiques : repo_sync, compose_override, traefik_labels, env_decrypt,",
         "dns_ensure/dns_prune/dns_list, registry_get/registry_set, project_status, host_info, secrets_keys…) et de Bash",
@@ -248,7 +257,9 @@ def process_one(dry: bool = False) -> dict | None:
         _set_running(None)
         req.unlink(missing_ok=True)
     if not dry:
-        mark_applied(state, name, prj, rec.get("ok", False))
+        # relu après le run : le LLM a pu écrire ses constats (service, container, port…) dans le registre
+        after = config.registry().projects.get(name) if prj is not None else None
+        mark_applied(state, name, after, rec.get("ok", False))
     return rec
 
 

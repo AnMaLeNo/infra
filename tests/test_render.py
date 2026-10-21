@@ -63,12 +63,25 @@ def test_skills_resolution(env):
     reg = config.registry()
     assert skills.for_project(reg.projects["site-client"]) == ["service/static", "expose/public", "previews"]
     assert skills.for_project(reg.projects["immich"]) == ["undeploy"]
+    # service absent : les deux skills service/*, le LLM choisit
+    assert skills.for_project(reg.projects["unused"]) == ["service/compose", "service/static", "expose/none"]
     assert all(p is not None for p in skills.paths_for(reg.projects["catacombes"]).values())
 
 
 def test_set_project_fields(env):
     config.set_project_fields("catacombes", port=9000, notes="x")
     assert config.project("catacombes").port == 9000
+
+
+def test_llm_decided_fields_do_not_mark_project_changed(env):
+    from infra import runner
+
+    before = runner._hash(config.project("catacombes"))
+    config.set_project_fields("catacombes", container="api", port=1234, build="make", source="llm")
+    assert runner._hash(config.project("catacombes")) == before
+    assert config.project("catacombes").decided() == {"container": "api", "port": 1234, "build": "make"}
+    config.set_project_fields("catacombes", expose="private")
+    assert runner._hash(config.project("catacombes")) != before
 
 
 
@@ -79,7 +92,7 @@ def test_changed_since_last_run_and_queue(env):
     for n, prj in config.registry().projects.items():
         runner.mark_applied(state, n, prj, ok=True)
     assert runner.changed_since_last_run(runner.load_state()) == []
-    config.set_project_fields("catacombes", port=1)
+    config.set_project_fields("catacombes", domain="cata")  # une intention ; `port` seul ne compterait pas (LLM_DECIDED)
     assert runner.changed_since_last_run(runner.load_state()) == ["catacombes"]
     runner.enqueue("catacombes")
     runner.enqueue("catacombes")

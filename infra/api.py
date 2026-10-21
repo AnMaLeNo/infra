@@ -50,7 +50,7 @@ def projects():
     for name, prj in reg.projects.items():
         t = Target(name, prj, h)
         st = state.get(name, {})
-        out[name] = {"entry": prj.model_dump(), "urls": t.urls, "skills": skills.for_project(prj),
+        out[name] = {"entry": prj.model_dump(), "decided": prj.decided(), "urls": t.urls, "skills": skills.for_project(prj),
                      "changed": st.get("hash") != runner._hash(prj), "never_run": "hash" not in st,
                      "queued": name in queued, "running": running == name,
                      "last_ok": st.get("ok"), "last_at": st.get("at")}

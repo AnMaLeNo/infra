@@ -70,8 +70,6 @@ def validate():
         for rel, p in skills.paths_for(prj).items():
             if p is None:
                 problems.append(f"{name}: skill {rel} introuvable")
-        if prj.enabled and prj.expose != "none" and prj.service == "compose" and prj.port is None:
-            problems.append(f"{name}: port manquant (le LLM devra le déduire)")
     _out({"host": h.name, "projects": len(reg.projects), "problems": problems or "aucun"})
     if any("introuvable" in p for p in problems):
         raise typer.Exit(1)

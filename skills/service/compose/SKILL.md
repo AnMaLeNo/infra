@@ -7,7 +7,7 @@ Le projet tourne en Docker Compose sur cet hôte, à partir de son propre `docke
 
 ## État cible
 - Le code est dans `/srv/apps/<P>/repo` sur la bonne `ref` (tool `repo_sync`).
-- `registry.yaml` contient `container` (service compose qui reçoit le HTTP) et `port` (port d'écoute interne) exacts — lus dans le compose/Dockerfile, pas devinés au hasard ; fixés via `registry_set`.
+- `registry.yaml` contient `container` (service compose qui reçoit le HTTP) et `port` (port d'écoute interne) exacts — c'est **toi** qui les détermines (compose, Dockerfile `EXPOSE`, code), l'utilisateur ne les saisit jamais ; fixés via `registry_set` (de même `compose_file` si ce n'est pas `docker-compose.yml`).
 - `/srv/apps/<P>/compose.override.yml` existe, généré par le tool `compose_override` : ports publiés neutralisés, `restart: unless-stopped`, labels Traefik et réseau `traefik-net` sur `container`, `.env` déchiffré si `env: true`, bind mounts `/srv/data/<P>/…` pour les données déclarées dans `data:`.
 - `docker compose -p <P> --project-directory repo -f repo/docker-compose.yml -f compose.override.yml [--env-file .env] up -d --build` est passé ; tous les containers `running`/`healthy` (tool `project_status`).
 - Aucun port publié sur l'hôte (`project_status.published_ports` vide), sauf ceux de `expose_ports:` liés à l'IP Tailscale.

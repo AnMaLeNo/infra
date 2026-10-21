@@ -84,15 +84,14 @@
     <label>Nom <span class="muted">(a-z0-9-)</span></label><input id="f_name" required pattern="[a-z0-9][a-z0-9-]*">
     <label>Repo GitHub</label><input id="f_repo" required placeholder="https://github.com/…">
     <div class="row">
-      <div><label>Service</label><select id="f_service"><option>compose</option><option>static</option></select></div>
+      <div><label>Service</label><select id="f_service"><option value="">Claude décide</option><option>compose</option><option>static</option></select></div>
       <div><label>Expose</label><select id="f_expose"><option>none</option><option>private</option><option>public</option></select></div>
       <div><label>Previews</label><select id="f_previews"><option>none</option><option>private</option><option>public</option></select></div>
     </div>
     <div class="row">
       <div><label>Domaine <span class="muted">(un label)</span></label><input id="f_domain" placeholder="= nom"></div>
-      <div><label>Container</label><input id="f_container" placeholder="service compose HTTP"></div>
-      <div><label>Port interne</label><input id="f_port" type="number" min="1" max="65535"></div>
     </div>
+    <p class="help" id="ed_decided"></p>
     <div class="row">
       <div><label>Branche / ref</label><input id="f_ref" value="main"></div>
       <div><label>Needs <span class="muted">(stacks, séparées par ,)</span></label><input id="f_needs" placeholder="mosquitto"></div>
@@ -102,7 +101,8 @@
       <div><label>Secrets .env</label><select id="f_env"><option value="false">non</option><option value="true">oui — secrets/projects/&lt;nom&gt;.env</option></select></div>
     </div>
     <label>Notes</label><textarea id="f_notes" rows="2"></textarea>
-    <p class="help">Les secrets ne se saisissent pas ici : <code>infra secrets edit projects/&lt;nom&gt;.env</code> (sops). Minimum : repo + expose.</p>
+    <p class="help">Les secrets ne se saisissent pas ici : <code>infra secrets edit projects/&lt;nom&gt;.env</code> (sops). Minimum : repo + expose.
+      Le <i>comment</i> (container, port, fichier compose, build…) n'est pas à toi : Claude le détermine au run et l'écrit dans le registre.</p>
     <div class="row" style="margin-top:12px">
       <button type="button" class="danger" id="btn_delete" onclick="deleteProject()">Supprimer du registre</button>
       <span></span>
@@ -134,7 +134,7 @@ async function load() {
     return `<tr>
       <td><span class="dot ${dot}" title="${title}"></span></td>
       <td><b>${name}</b>${e.enabled ? '' : ' <span class="tag">désactivé</span>'}<br><a class="muted" href="${e.repo}" target="_blank">${e.repo.replace('https://github.com/','')}</a></td>
-      <td>${e.service}</td><td><span class="tag ${e.expose}">${e.expose}</span></td><td>${e.previews === 'none' ? '—' : `<span class="tag ${e.previews}">${e.previews}</span>`}</td>
+      <td>${e.service || '<span class="muted" title="Claude choisit compose ou static au run">auto</span>'}${e.container || e.port ? `<br><span class="muted" title="constaté par Claude">${e.container || '?'}:${e.port ?? '?'}</span>` : ''}</td><td><span class="tag ${e.expose}">${e.expose}</span></td><td>${e.previews === 'none' ? '—' : `<span class="tag ${e.previews}">${e.previews}</span>`}</td>
       <td>${urls || '—'}</td>
       <td class="muted">${p.last_at ? new Date(p.last_at).toLocaleString('fr-FR') : '—'}</td>
       <td class="right"><button class="${p.changed && !busy ? 'primary' : ''}" ${busy ? 'disabled' : ''} onclick='requestRun(${js(name)})' title="Lance claude -p sur ce projet avec ses skills">${p.running ? 'En cours…' : p.queued ? 'En attente' : 'Lancer Claude'}</button></td>
@@ -196,9 +196,13 @@ function openEditor(name) {
   editing = name || null; const e = (name && PROJECTS[name]?.entry) || {};
   $('#edtitle').textContent = name ? `Modifier ${name}` : 'Nouveau projet';
   $('#f_name').value = name || ''; $('#f_name').disabled = !!name;
-  $('#f_repo').value = e.repo || ''; $('#f_service').value = e.service || 'compose'; $('#f_expose').value = e.expose || 'private';
-  $('#f_previews').value = e.previews || 'none'; $('#f_domain').value = e.domain || ''; $('#f_container').value = e.container || '';
-  $('#f_port').value = e.port ?? ''; $('#f_ref').value = e.ref || 'main'; $('#f_needs').value = (e.needs || []).join(',');
+  $('#f_repo').value = e.repo || ''; $('#f_service').value = e.service || ''; $('#f_expose').value = e.expose || 'private';
+  $('#f_previews').value = e.previews || 'none'; $('#f_domain').value = e.domain || '';
+  $('#f_ref').value = e.ref || 'main'; $('#f_needs').value = (e.needs || []).join(',');
+  const decided = (name && PROJECTS[name]?.decided) || {};
+  $('#ed_decided').textContent = Object.keys(decided).length
+    ? 'Constaté par Claude au dernier run : ' + Object.entries(decided).map(([k, v]) => `${k} = ${v}`).join(' · ')
+    : 'Rien encore constaté par Claude (container, port… seront écrits par lui au premier run).';
   $('#f_enabled').value = String(e.enabled ?? true); $('#f_env').value = String(e.env ?? false); $('#f_notes').value = e.notes || '';
   $('#btn_delete').style.visibility = name ? 'visible' : 'hidden'; $('#ederr').textContent = '';
   editor.showModal();
@@ -206,9 +210,8 @@ function openEditor(name) {
 async function saveProject(ev) {
   ev.preventDefault();
   const name = $('#f_name').value.trim();
-  const body = { repo: $('#f_repo').value.trim(), service: $('#f_service').value, expose: $('#f_expose').value, previews: $('#f_previews').value,
-    domain: $('#f_domain').value.trim() || null, container: $('#f_container').value.trim() || null,
-    port: $('#f_port').value ? Number($('#f_port').value) : null, ref: $('#f_ref').value.trim() || 'main',
+  const body = { repo: $('#f_repo').value.trim(), service: $('#f_service').value || null, expose: $('#f_expose').value, previews: $('#f_previews').value,
+    domain: $('#f_domain').value.trim() || null, ref: $('#f_ref').value.trim() || 'main',
     needs: $('#f_needs').value.split(',').map(s => s.trim()).filter(Boolean), enabled: $('#f_enabled').value === 'true',
     env: $('#f_env').value === 'true', notes: $('#f_notes').value };
   try { await api('/api/projects/' + name, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); editor.close(); load(); }
