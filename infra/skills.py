@@ -18,7 +18,8 @@ def resolve(rel: str) -> Path | None:
 def for_project(prj: Project | None) -> list[str]:
     if prj is None or not prj.enabled:
         return ["undeploy"]
-    rels = [f"service/{prj.service}", f"expose/{prj.expose}"]
+    rels = [f"service/{prj.service}"] if prj.service else ["service/compose", "service/static"]
+    rels.append(f"expose/{prj.expose}")
     if prj.previews != "none":
         rels.append("previews")
     return rels

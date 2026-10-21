@@ -44,17 +44,17 @@ projects:
   catacombes:
     repo: https://github.com/AnMaLeNo/catacombes
     enabled: true
-    service: compose        # skills/service/compose — le repo a un docker-compose.yml
+    service: compose        # compose | static ; absent → Claude choisit et l'écrit
     expose: public          # none | private | public
     domain: catacombes      # défaut : le nom du projet
-    container: web          # service compose qui reçoit le trafic HTTP
-    port: 8420              # port d'écoute dans le container
+    container: web          # écrit par Claude au run (service compose qui reçoit le HTTP), pas à saisir
+    port: 8420              # idem (port d'écoute dans le container) ; de même compose_file, build, static_dir
     previews: none          # none | private | public
     needs: [mosquitto]      # stacks partagées requises (stack/<nom>)
     env: true               # secrets/projects/catacombes.env (sops)
 ```
 
-Minimum : `repo` + `expose`. Tout le reste a une valeur par défaut ou est deviné par le LLM.
+Minimum : `repo` + `expose`. L'utilisateur décrit le *quoi* (repo, exposition, domaine, previews, dépendances, secrets) ; le *comment* (`service` s'il est absent, `container`, `port`, `compose_file`, `build`, `static_dir`) est constaté par Claude pendant le run et écrit dans le registre via `registry_set` — le front l'affiche en lecture seule, et ces champs ne comptent pas comme « modifié depuis le dernier run ».
 
 ## Dépôt
 

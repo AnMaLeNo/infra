@@ -7,7 +7,7 @@ Le site est servi par un container nginx, à partir des fichiers du repo (évent
 
 ## État cible
 - Code dans `/srv/apps/<P>/repo` (`repo_sync`).
-- Si `build:` est défini (ex. `npm ci && npm run build`), il a été exécuté (dans un container `node:22`, pas sur l'hôte) et `static_dir` contient un `index.html`.
+- `build:` et `static_dir` sont tes constats : déduis-les du repo (`package.json`, framework, dossier de sortie `dist`/`build`/`.`) et écris-les via `registry_set` ; l'utilisateur ne les saisit pas. Si `build:` est défini (ex. `npm ci && npm run build`), il a été exécuté (dans un container `node:22`, pas sur l'hôte) et `static_dir` contient un `index.html`.
 - `/srv/apps/<P>/compose.static.yml` (nginx `1.27-alpine`, bind mount `static_dir` en lecture seule, port 80) et `compose.override.yml` générés par `compose_override` ; `container=web`, `port=80`.
 - `docker compose -p <P> -f compose.static.yml -f compose.override.yml up -d` passé ; `curl` sur l'IP du container → 200.
 

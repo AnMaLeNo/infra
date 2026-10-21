@@ -9,7 +9,7 @@ Quand un run est demandé pour le projet `P` (bouton « Lancer Claude »), le ru
 | Situation | Skills |
 |---|---|
 | `enabled: false` (ou projet supprimé) | `undeploy/` |
-| `enabled: true` | `service/<P.service>/` + `expose/<P.expose>/` (+ `previews/` si `P.previews != none`) ; `migrate-legacy/` en plus si `legacy:` est renseigné |
+| `enabled: true` | `service/<P.service>/` (les deux `service/*` si `service` est absent : le LLM choisit et l'écrit via `registry_set`) + `expose/<P.expose>/` (+ `previews/` si `P.previews != none`) ; `migrate-legacy/` en plus si `legacy:` est renseigné |
 
 Pour chaque chemin : `<config>/skills/<chemin>/SKILL.md` (custom) sinon `tool/skills/<chemin>/SKILL.md`. Ajouter un mode `expose: lan` = écrire `<config>/skills/expose/lan/SKILL.md`.
 

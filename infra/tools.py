@@ -31,7 +31,7 @@ def registry_get(project: str | None = None) -> dict:
 
 
 def registry_set(project: str, fields: dict) -> dict:
-    """Modifie des champs d'un projet dans registry.yaml (ex. {"container": "web", "port": 8420}). Valeur null = supprimer le champ."""
+    """Modifie des champs d'un projet dans registry.yaml. C'est ainsi que tu consignes tes constats (`service` si absent, `container`, `port`, `compose_file`, `build`, `static_dir`), ex. {"container": "web", "port": 8420}. Valeur null = supprimer le champ."""
     return {project: config.set_project_fields(project, **fields).model_dump(exclude_defaults=True)}
 
 
@@ -46,7 +46,7 @@ def repo_sync(project: str, pr: int | None = None) -> dict:
 
 
 def compose_override(project: str, pr: int | None = None) -> dict:
-    """Génère /srv/apps/<P>/compose.override.yml (ports publiés neutralisés, restart, labels Traefik + réseau traefik-net sur `container`, bind mounts `data:`, env_file si env:true) et le .env déchiffré. Pour `service: static`, génère aussi compose.static.yml (nginx) après le `build:`. Échoue si le repo n'a pas de compose, si `container`/`port` manquent ou si le container n'existe pas. Retourne le contenu généré, la commande `docker compose` à utiliser et les variables manquantes."""
+    """Génère /srv/apps/<P>/compose.override.yml (ports publiés neutralisés, restart, labels Traefik + réseau traefik-net sur `container`, bind mounts `data:`, env_file si env:true) et le .env déchiffré. Pour `service: static`, génère aussi compose.static.yml (nginx) après le `build:`. Échoue si le repo n'a pas de compose, si `container`/`port` manquent (lis le compose/Dockerfile et fixe-les d'abord via registry_set) ou si le container n'existe pas. Retourne le contenu généré, la commande `docker compose` à utiliser et les variables manquantes."""
     t = _target(project, pr)
     if not t.repo_dir.exists():
         raise FileNotFoundError(f"repo non synchronisé : appelle repo_sync({project!r}) d'abord")
