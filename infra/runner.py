@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -17,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from . import config, paths, secrets, skills
+from . import compose, config, paths, secrets, skills
 from .models import Project
 
 ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,mcp__infra"
@@ -69,8 +70,24 @@ def build_prompt(name: str, prj: Project | None, previous: dict | None) -> str:
         "n'affiche jamais la valeur d'un secret ; n'invente pas de valeur manquante (termine en échec avec la question précise) ;",
         "ne modifie pas le repo du projet sauf cas prévu par un skill (PR). Termine par un résumé : ce qui a été fait,",
         "les URLs, ce que tu as dû faire à la main (candidats à devenir des tools), ce qu'il reste à un humain.",
+        "",
+        "Dernière ligne de ta réponse, exactement l'une de : `ÉTAT FINAL : ok` (état cible atteint et vérifié),",
+        "`ÉTAT FINAL : bloqué` (il manque quelque chose qu'un humain doit fournir, rien n'est cassé),",
+        "`ÉTAT FINAL : échec` (tu as échoué ou laissé quelque chose en mauvais état). Sans cette ligne le run compte comme échec.",
     ]
     return "\n".join(lines)
+
+
+_FINAL = re.compile(r"ÉTAT FINAL\s*:\s*\**\s*(ok|bloqué|bloque|échec|echec)\b", re.I)
+
+
+def final_status(result: str) -> str:
+    """Lit la ligne `ÉTAT FINAL : ok|bloqué|échec` demandée à Claude (la dernière compte). Absente → `inconnu`."""
+    found = _FINAL.findall(result or "")
+    if not found:
+        return "inconnu"
+    v = found[-1].lower()
+    return {"bloque": "bloqué", "echec": "échec"}.get(v, v)
 
 
 def claude_bin() -> str:
@@ -90,8 +107,9 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
         return rec
     llm = config.host().llm
     rec.update({"model": llm.model, "effort": llm.effort})
-    env = {**os.environ}
     ienv = secrets.infra_env()
+    # git/gh de Claude : pas de prompt, et GITHUB_TOKEN (repos privés, PR) si présent — jamais écrit sur disque
+    env = {**os.environ, **compose.git_env()}
     if "CLAUDE_CODE_OAUTH_TOKEN" in ienv and "CLAUDE_CODE_OAUTH_TOKEN" not in env:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = ienv["CLAUDE_CODE_OAUTH_TOKEN"]
     mcp_cfg = paths.runs_dir() / ".mcp.json"
@@ -121,7 +139,9 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
         rec["is_error"] = True
     rec["result"] = secrets.mask(result_text, secret_values)
     rec["stderr"] = secrets.mask(cp.stderr[-4000:], secret_values)
-    rec["ok"] = cp.returncode == 0 and not rec.get("is_error")
+    rec["status"] = final_status(result_text)
+    # claude -p sort 0 même quand il s'est déclaré bloqué : c'est sa dernière ligne qui fait foi
+    rec["ok"] = cp.returncode == 0 and not rec.get("is_error") and rec["status"] == "ok"
     rec["finished"] = datetime.now(UTC).isoformat()
     p = _save(rec)
     p.with_suffix(".log").write_text(secrets.mask(cp.stdout, secret_values)
@@ -151,7 +171,7 @@ def list_runs(limit: int = 50) -> list[dict]:
 
 
 def _summary(r: dict, p: Path) -> dict:
-    keys = ("project", "started", "finished", "ok", "skills", "cost_usd", "duration_ms", "num_turns", "dry", "model", "effort")
+    keys = ("project", "started", "finished", "ok", "status", "skills", "cost_usd", "duration_ms", "num_turns", "dry", "model", "effort")
     return {k: r.get(k) for k in keys} | {"file": p.name, "log": p.with_suffix(".log").name if p.with_suffix(".log").exists() else None}
 
 
@@ -197,9 +217,9 @@ def changed_since_last_run(state: dict) -> list[str]:
     return out
 
 
-def mark_applied(state: dict, name: str, prj: Project | None, ok: bool) -> None:
+def mark_applied(state: dict, name: str, prj: Project | None, ok: bool, status: str | None = None) -> None:
     state[name] = {"hash": _hash(prj), "entry": prj.model_dump() if prj else None, "ok": ok,
-                   "at": datetime.now(UTC).isoformat()}
+                   "status": status, "at": datetime.now(UTC).isoformat()}
     save_state(state)
 
 
@@ -259,7 +279,7 @@ def process_one(dry: bool = False) -> dict | None:
     if not dry:
         # relu après le run : le LLM a pu écrire ses constats (service, container, port…) dans le registre
         after = config.registry().projects.get(name) if prj is not None else None
-        mark_applied(state, name, after, rec.get("ok", False))
+        mark_applied(state, name, after, rec.get("ok", False), rec.get("status"))
     return rec
 
 

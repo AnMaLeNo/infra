@@ -37,3 +37,23 @@ def test_runs_for_project_and_log(env):
     assert len(runs) == 1 and runs[0]["log"] == p.with_suffix(".log").name and runs[0]["model"] == "sonnet"
     assert "fait" in runner.get_log(runs[0]["log"])
     assert runner.runs_for_project("site-client") == []
+
+
+def test_final_status_parsing():
+    from infra.runner import final_status
+
+    assert final_status("blabla\n\nÉTAT FINAL : ok") == "ok"
+    assert final_status("…\n**ÉTAT FINAL : bloqué**") == "bloqué"
+    assert final_status("ÉTAT FINAL : ok\nfinalement non\nÉTAT FINAL : échec") == "échec"
+    assert final_status("rien") == "inconnu"
+
+
+def test_git_env_with_and_without_token(env, monkeypatch):
+    from infra import compose, secrets
+
+    monkeypatch.setattr(secrets, "infra_env", lambda: {})
+    assert compose.git_env() == {"GIT_TERMINAL_PROMPT": "0"}
+    monkeypatch.setattr(secrets, "infra_env", lambda: {"GITHUB_TOKEN": "ghp_x"})
+    e = compose.git_env()
+    assert e["GH_TOKEN"] == "ghp_x" and e["GIT_CONFIG_VALUE_0"] == "https://github.com/"
+    assert "x-access-token:ghp_x@github.com" in e["GIT_CONFIG_KEY_0"]
