@@ -45,8 +45,10 @@ SUDO
 chmod 0440 /etc/sudoers.d/ai-infra
 
 echo "== CLI"
+# Hors de /root (0700) : le runner tourne en ai-infra et doit pouvoir traverser le venv.
+export UV_TOOL_DIR=/usr/local/lib/infra-uv UV_TOOL_BIN_DIR=/usr/local/bin
+rm -f /usr/local/bin/infra
 uv tool install --force --python 3.11 "$TOOL_DIR" >/dev/null 2>&1 || uv tool install --force "$TOOL_DIR" >/dev/null
-ln -sf "$(uv tool dir)/infra/bin/infra" /usr/local/bin/infra
 infra --version
 
 echo "== runner (systemd)"
