@@ -115,11 +115,15 @@
 
 <script>
 const $ = s => document.querySelector(s);
-let editing = null;
+let editing = null, PROJECTS = {};
+// Valeur JS sûre dans un attribut onclick='…' : JSON + apostrophes échappées (sinon un ' dans la
+// donnée ferme l'attribut et le bouton meurt en silence — vu avec un champ legacy « l'ancien tunnel »).
+const js = v => JSON.stringify(v).replace(/'/g, '\\u0027').replace(/</g, '\\u003c').replace(/&/g, '\\u0026');
 async function api(path, opts) { const r = await fetch(path, opts); if (!r.ok) throw new Error(await r.text()); return r.headers.get('content-type')?.includes('json') ? r.json() : r.text(); }
 
 async function load() {
   const [h, projects, runs] = await Promise.all([api('/api/host'), api('/api/projects'), api('/api/runs?limit=30')]);
+  PROJECTS = projects;
   $('#hostinfo').textContent = `${h.name} · ${h.tailscale_ip} · privé *.${h.private_zone} · public ${h.public_ingress} · v${h.version}`;
   $('#btn_settings').textContent = `⚙ Claude : ${h.llm.model} / ${h.llm.effort}`;
   $('#projects').innerHTML = Object.entries(projects).map(([name, p]) => {
@@ -133,9 +137,9 @@ async function load() {
       <td>${e.service}</td><td><span class="tag ${e.expose}">${e.expose}</span></td><td>${e.previews === 'none' ? '—' : `<span class="tag ${e.previews}">${e.previews}</span>`}</td>
       <td>${urls || '—'}</td>
       <td class="muted">${p.last_at ? new Date(p.last_at).toLocaleString('fr-FR') : '—'}</td>
-      <td class="right"><button class="${p.changed && !busy ? 'primary' : ''}" ${busy ? 'disabled' : ''} onclick='requestRun(${JSON.stringify(name)})' title="Lance claude -p sur ce projet avec ses skills">${p.running ? 'En cours…' : p.queued ? 'En attente' : 'Lancer Claude'}</button></td>
-      <td class="right"><button onclick='openEditor(${JSON.stringify(name)}, ${JSON.stringify(e)})'>Modifier</button></td>
-      <td class="right"><button onclick='openHistory(${JSON.stringify(name)})' title="Versions de la config + tous les runs, avec leurs logs">Historique</button></td></tr>`;
+      <td class="right"><button class="${p.changed && !busy ? 'primary' : ''}" ${busy ? 'disabled' : ''} onclick='requestRun(${js(name)})' title="Lance claude -p sur ce projet avec ses skills">${p.running ? 'En cours…' : p.queued ? 'En attente' : 'Lancer Claude'}</button></td>
+      <td class="right"><button onclick='openEditor(${js(name)})'>Modifier</button></td>
+      <td class="right"><button onclick='openHistory(${js(name)})' title="Versions de la config + tous les runs, avec leurs logs">Historique</button></td></tr>`;
   }).join('') || '<tr><td colspan="10" class="muted">Aucun projet. Ajoute-en un.</td></tr>';
   $('#runs').innerHTML = runs.map(r => `<tr onclick="showRun('${r.file}')" style="cursor:pointer">
       <td><span class="dot ${r.ok ? 'ok' : 'ko'}"></span>${r.project}${r.dry ? ' <span class="tag">dry</span>' : ''}</td>
@@ -188,8 +192,8 @@ async function showHistRun(i) {
     + (full.stderr ? `\n\n## stderr\n${full.stderr}` : '') + `\n\n## Déroulé complet (stream-json)\n${log}`;
 }
 
-function openEditor(name, e) {
-  editing = name || null; e = e || {};
+function openEditor(name) {
+  editing = name || null; const e = (name && PROJECTS[name]?.entry) || {};
   $('#edtitle').textContent = name ? `Modifier ${name}` : 'Nouveau projet';
   $('#f_name').value = name || ''; $('#f_name').disabled = !!name;
   $('#f_repo').value = e.repo || ''; $('#f_service').value = e.service || 'compose'; $('#f_expose').value = e.expose || 'private';
