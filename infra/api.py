@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import ValidationError
 
-from . import __version__, compose, config, history, paths, runner, skills
+from . import __version__, chat, compose, config, history, paths, runner, skills
 from .models import Llm, Project
 from .render import Target
 
@@ -135,6 +135,71 @@ def run_log(file: str):
     """Déroulé complet du run (stream-json de claude : textes, appels d'outils, résultat)."""
     _check_file(file, ".log")
     return runner.get_log(file)
+
+
+@app.get("/api/runs/{file}/chats")
+def run_chats(file: str):
+    _check_file(file, ".json")
+    try:
+        return {"resumable": chat.session_of(file) is not None, "threads": chat.list_for_run(file)}
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/runs/{file}/chats")
+def create_chat(file: str):
+    _check_file(file, ".json")
+    try:
+        return chat.create(file)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/chats/{thread}")
+def chat_detail(thread: str):
+    try:
+        return chat.get(thread) | {
+            "queue_position": chat.queue_position(thread),
+            "runner_busy": runner.running(),
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.put("/api/chats/{thread}")
+def put_chat(thread: str, body: dict):
+    try:
+        return chat.set_act(thread, body.get("act"))
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/chats/{thread}/messages")
+def post_chat_message(thread: str, body: dict):
+    try:
+        return chat.post(thread, body.get("text"))
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/chats/{thread}/log/{n}", response_class=PlainTextResponse)
+def chat_log(thread: str, n: int):
+    try:
+        return chat.get_log(thread, n)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 @app.get("/api/skills")

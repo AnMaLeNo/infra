@@ -98,6 +98,14 @@ def claude_bin() -> str:
     return b
 
 
+def _mcp_config() -> Path:
+    mcp_cfg = paths.runs_dir() / ".mcp.json"
+    mcp_cfg.parent.mkdir(parents=True, exist_ok=True)
+    mcp_cfg.write_text(json.dumps({"mcpServers": {"infra": {"command": shutil.which("infra") or "infra", "args": ["mcp"],
+                                                             "env": {"INFRA_CONFIG_DIR": str(paths.config_dir())}}}}))
+    return mcp_cfg
+
+
 def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool = False) -> dict:
     started = datetime.now(UTC)
     prompt = build_prompt(name, prj, previous)
@@ -113,10 +121,7 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
     env = {**os.environ, **compose.git_env()}
     if "CLAUDE_CODE_OAUTH_TOKEN" in ienv and "CLAUDE_CODE_OAUTH_TOKEN" not in env:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = ienv["CLAUDE_CODE_OAUTH_TOKEN"]
-    mcp_cfg = paths.runs_dir() / ".mcp.json"
-    mcp_cfg.parent.mkdir(parents=True, exist_ok=True)
-    mcp_cfg.write_text(json.dumps({"mcpServers": {"infra": {"command": shutil.which("infra") or "infra", "args": ["mcp"],
-                                                             "env": {"INFRA_CONFIG_DIR": str(paths.config_dir())}}}}))
+    mcp_cfg = _mcp_config()
     # stream-json + --verbose : on garde TOUT le déroulé (tool calls, textes, résultat) dans runs/<run>.log
     cmd = [claude_bin(), "-p", prompt, "--output-format", "stream-json", "--verbose",
            "--model", llm.model, "--effort", llm.effort, "--allowedTools", ALLOWED_TOOLS,
@@ -130,8 +135,11 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
             ev = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(ev, dict) and ev.get("type") == "result":
-            out = ev
+        if isinstance(ev, dict):
+            if ev.get("session_id") and "session_id" not in rec:
+                rec["session_id"] = ev["session_id"]
+            if ev.get("type") == "result":
+                out = ev
     if out is not None:
         result_text = out.get("result", "")
         rec.update({"cost_usd": out.get("total_cost_usd"), "duration_ms": out.get("duration_ms"),
@@ -289,13 +297,19 @@ def process_one(dry: bool = False) -> dict | None:
 
 
 def watch(interval: float = 3.0, once: bool = False, dry: bool = False) -> None:
-    """Boucle du service infra-runner : consomme la file, un projet à la fois."""
+    """Boucle du service infra-runner : consomme les chats puis les runs."""
     print(f"runner : file {queue_dir()} (toutes les {interval}s)", file=sys.stderr)
     while True:
+        from . import chat
+
+        chat_rec = chat.process_one()
+        if chat_rec:
+            message = chat_rec["message"] or {}
+            print(f"chat {chat_rec['thread']} : {'ok' if message.get('ok') else 'échec'}", file=sys.stderr)
         rec = process_one(dry=dry)
         if rec:
             print(f"run {rec['project']} : {'ok' if rec.get('ok') else 'échec'}", file=sys.stderr)
         if once:
             return
-        if rec is None:
+        if rec is None and chat_rec is None:
             time.sleep(interval)

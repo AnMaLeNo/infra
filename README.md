@@ -25,6 +25,10 @@ registry.yaml modifié (UI web ou git)  →  rien ne se passe
                 https://<domain>.<public_zone>   (Cloudflare Tunnel → Traefik)
 ```
 
+## Runs et historique
+
+Depuis l'historique d'un run, on peut reprendre sa session Claude en ouvrant un fil : le premier message crée un fork pour préserver le run, puis chaque message recharge toute la session (environ 0,4 $ mesuré pour un run de 27 tours). Le mode « enquête » est activé par défaut ; chaque fil peut basculer en mode « droits du run » pour autoriser les actions.
+
 ## Les trois modes d'exposition
 
 | `expose` | Accessible par | URL | Mécanisme |
