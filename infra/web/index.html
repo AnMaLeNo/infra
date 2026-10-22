@@ -30,6 +30,10 @@
   dialog { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:8px; width:min(560px, 95vw) }
   dialog::backdrop { background:rgba(0,0,0,.6) }
   .help { font-size:12px; color:var(--muted); margin-top:4px }
+  .msg { border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin:8px 0 }
+  .msg.user { background:#0d1117; margin-left:15% } .msg.assistant { margin-right:5% } .msg.err { border-color:var(--ko) }
+  .msg .who { font-size:12px; color:var(--muted); margin-bottom:4px } .msg .txt { white-space:pre-wrap; word-break:break-word }
+  .msg details { margin-top:6px; font-size:12px } .msg details pre { max-height:300px; white-space:pre-wrap }
 </style>
 </head>
 <body>
@@ -73,9 +77,34 @@
   <p class="help">Chronologie : chaque version de l'entrée du registre et chaque run de Claude. Clique sur un run pour voir le prompt, le résumé et le déroulé complet (appels d'outils inclus).</p>
   <div class="row" style="align-items:flex-start">
     <table style="flex:1"><tbody id="hitems"></tbody></table>
-    <pre id="hdetail" class="muted" style="flex:1.4; max-height:60vh; white-space:pre-wrap">Sélectionne un élément.</pre>
+    <div style="flex:1.4; min-width:0">
+      <div id="hactions" style="text-align:right; margin-bottom:6px"></div>
+      <pre id="hdetail" class="muted" style="margin:0; max-height:60vh; white-space:pre-wrap">Sélectionne un élément.</pre>
+    </div>
   </div>
   <div class="row" style="margin-top:12px"><span></span><button type="button" onclick="histdlg.close()">Fermer</button></div>
+</dialog>
+
+<dialog id="chatdlg" style="width:min(900px, 96vw)">
+  <h3 id="ctitle" style="margin-top:0">Discussion</h3>
+  <p class="help">Reprend la session Claude de ce run, avec tout son historique (ce qu'il a lu, lancé, constaté). La discussion part d'une copie : le déroulé du run n'est pas modifié. Chaque message recharge tout l'historique : un message peut coûter quelques dizaines de centimes.</p>
+  <div class="row" style="align-items:center">
+    <select id="c_thread" onchange="selectThread(this.value)"></select>
+    <button type="button" style="flex:0 0 auto" onclick="newThread()" title="Repart de la fin du run, sans les messages des autres fils">Nouveau fil</button>
+    <label style="flex:0 0 auto; margin:0; display:flex; gap:6px; align-items:center; color:var(--fg); font-size:14px" title="Par défaut, Claude enquête seulement (lecture). Coché : mêmes droits que pendant le run.">
+      <input type="checkbox" id="c_act" style="width:auto" onchange="toggleAct(this)"> Droits du run</label>
+  </div>
+  <p class="help" id="c_mode"></p>
+  <div id="c_msgs" style="max-height:52vh; overflow:auto"></div>
+  <p class="help" id="c_state"></p>
+  <form onsubmit="return sendChat(event)">
+    <textarea id="c_text" rows="3" placeholder="Ex. : pourquoi le certificat de catacombes.pi n'a pas été émis ? Vérifie les logs de Traefik."></textarea>
+    <div class="row" style="margin-top:8px; align-items:center">
+      <span id="c_err" style="color:var(--ko)"></span>
+      <button class="primary" type="submit" id="c_send" style="flex:0 0 auto">Envoyer</button>
+      <button type="button" style="flex:0 0 auto" onclick="chatdlg.close()">Fermer</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="editor">
@@ -173,17 +202,20 @@ async function openHistory(name) {
     return `<tr style="cursor:pointer" onclick="showHistRun(${it.i})"><td><span class="dot ${r.ok ? 'ok' : 'ko'}"></span><span class="tag">run</span>${r.dry ? ' <span class="tag">dry</span>' : ''}</td>
       <td>${r.ok ? 'réussi' : 'échec'} · ${r.model || '?'}/${r.effort || '?'}${r.num_turns ? ' · ' + r.num_turns + ' tours' : ''}${r.cost_usd ? ' · ' + r.cost_usd.toFixed(2) + ' $' : ''}</td><td class="muted right">${fmt(r.started)}</td></tr>`;
   }).join('') || '<tr><td class="muted">Rien encore pour ce projet.</td></tr>';
-  $('#hdetail').textContent = 'Sélectionne un élément.'; $('#hdetail').classList.add('muted');
+  $('#hdetail').textContent = 'Sélectionne un élément.'; $('#hdetail').classList.add('muted'); $('#hactions').innerHTML = '';
   histdlg.showModal();
 }
 function showConfig(i) {
-  const c = hist.config[i], prev = hist.config[i - 1];
+  const c = hist.config[i], prev = hist.config[i - 1]; $('#hactions').innerHTML = '';
   $('#hdetail').classList.remove('muted');
   $('#hdetail').textContent = `# ${fmt(c.at)} · source : ${c.source}\n\n` + (c.entry ? JSON.stringify(c.entry, null, 2) : '(retirée du registre)')
     + (prev ? `\n\n# version précédente (${fmt(prev.at)})\n` + (prev.entry ? JSON.stringify(prev.entry, null, 2) : '(absente)') : '');
 }
 async function showHistRun(i) {
   const r = hist.runs[i]; const full = await api('/api/runs/' + r.file + '/full');
+  $('#hactions').innerHTML = r.log
+    ? `<button class="primary" onclick='openChat(${js(r.file)}, ${js(full.project + ' · run du ' + fmt(r.started))})' title="Reprendre la session Claude de ce run pour comprendre ce qui s'est passé">Discuter avec cette session</button>`
+    : '<span class="muted">Pas de session Claude reprenable pour ce run (dry ou ancien).</span>';
   const log = r.log ? await api('/api/runs/' + r.log + '/log') : '(pas de déroulé : run dry ou ancien)';
   $('#hdetail').classList.remove('muted');
   $('#hdetail').textContent = `# run ${fmt(r.started)} — ${full.ok ? 'réussi' : 'échec'} · ${full.model || '?'}/${full.effort || '?'}`
@@ -218,6 +250,81 @@ async function saveProject(ev) {
   catch (e) { $('#ederr').textContent = e.message; }
   return false;
 }
+// ---- discussion avec la session d'un run -------------------------------------------------------
+const chat = { run: null, thread: null, timer: null, data: null };
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+chatdlg.addEventListener('close', () => { clearInterval(chat.timer); chat.timer = null; });
+
+async function openChat(runFile, label) {
+  chat.run = runFile; chat.thread = null; $('#ctitle').textContent = `Discussion — ${label}`; $('#c_err').textContent = '';
+  $('#c_msgs').replaceChildren(); chatdlg.showModal();
+  try {
+    const r = await api('/api/runs/' + runFile + '/chats');
+    if (!r.resumable) { $('#c_err').textContent = "Ce run n'a pas de session Claude reprenable."; return; }
+    if (!r.threads.length) r.threads.push(await api('/api/runs/' + runFile + '/chats', { method: 'POST' }));
+    fillThreads(r.threads); await selectThread(r.threads[r.threads.length - 1].thread);
+  } catch (e) { $('#c_err').textContent = e.message; }
+}
+function fillThreads(threads) {
+  $('#c_thread').replaceChildren(...threads.map((t, i) => {
+    const o = el('option', null, `Fil ${i + 1} · ${fmt(t.created)} · ${t.n_messages ?? (t.messages || []).length} message(s)${t.act ? ' · droits du run' : ''}`);
+    o.value = t.thread; return o; }));
+}
+async function newThread() {
+  try { const t = await api('/api/runs/' + chat.run + '/chats', { method: 'POST' });
+    fillThreads((await api('/api/runs/' + chat.run + '/chats')).threads); await selectThread(t.thread); }
+  catch (e) { $('#c_err').textContent = e.message; }
+}
+async function selectThread(id) {
+  chat.thread = id; $('#c_thread').value = id; await refreshChat();
+}
+async function refreshChat() {
+  if (!chat.thread) return;
+  const t = await api('/api/chats/' + chat.thread); chat.data = t;
+  $('#c_act').checked = !!t.act;
+  $('#c_mode').textContent = t.act
+    ? "Mode action : Claude a les mêmes droits que pendant le run (Bash, fichiers, tools d'écriture). Il n'agit que si tu le lui demandes."
+    : "Mode enquête : Claude peut lire fichiers, logs et état, mais ne modifie rien. S'il faut agir, il te le dira.";
+  const box = $('#c_msgs'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  let n = 0;
+  box.replaceChildren(...t.messages.map(m => {
+    const d = el('div', `msg ${m.role}${m.role === 'assistant' && m.ok === false ? ' err' : ''}`);
+    if (m.role === 'user') { d.append(el('div', 'who', 'Toi · ' + fmt(m.at)), el('div', 'txt', m.text)); return d; }
+    const i = n++;
+    const meta = ['Claude', fmt(m.at), m.cost_usd != null ? m.cost_usd.toFixed(2) + ' $' : null,
+      m.duration_ms ? Math.round(m.duration_ms / 1000) + ' s' : null, m.num_turns ? m.num_turns + ' tour(s)' : null].filter(Boolean).join(' · ');
+    d.append(el('div', 'who', meta), el('div', 'txt', m.text || ''));
+    if (m.error) { const e = el('div', 'txt', 'Erreur : ' + m.error); e.style.color = 'var(--ko)'; d.append(e); }
+    if (m.log) {
+      const det = el('details'); det.append(el('summary', null, 'Déroulé (appels d\'outils)'));
+      const pre = el('pre', null, 'chargement…'); det.append(pre);
+      det.addEventListener('toggle', async () => { if (det.open && pre.textContent === 'chargement…') pre.textContent = await api(`/api/chats/${chat.thread}/log/${i}`); }, { once: true });
+      d.append(det);
+    }
+    return d;
+  }));
+  if (!t.messages.length) box.append(el('p', 'muted', 'Pose ta question : Claude répond en connaissant tout le déroulé du run.'));
+  if (atBottom || t.pending) box.scrollTop = box.scrollHeight;
+  $('#c_send').disabled = !!t.pending;
+  $('#c_state').textContent = !t.pending ? '' : t.runner_busy
+    ? `En attente : un run (${t.runner_busy}) est en cours sur le Pi, ta question sera traitée après.` : 'Claude réfléchit…';
+  clearInterval(chat.timer); chat.timer = t.pending ? setInterval(() => refreshChat().catch(e => { $('#c_err').textContent = e.message; }), 2500) : null;
+}
+async function toggleAct(box) {
+  if (box.checked && !confirm("Donner à ce fil les droits du run ? Claude pourra modifier l'hôte (Bash, fichiers, tools MCP d'écriture) — uniquement si tu le lui demandes.")) { box.checked = false; return; }
+  try { await api('/api/chats/' + chat.thread, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ act: box.checked }) });
+    fillThreads((await api('/api/runs/' + chat.run + '/chats')).threads); $('#c_thread').value = chat.thread; await refreshChat(); }
+  catch (e) { $('#c_err').textContent = e.message; box.checked = !box.checked; }
+}
+async function sendChat(ev) {
+  ev.preventDefault(); const text = $('#c_text').value.trim(); if (!text || !chat.thread) return false;
+  $('#c_err').textContent = '';
+  try { await api(`/api/chats/${chat.thread}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+    $('#c_text').value = ''; await refreshChat(); }
+  catch (e) { $('#c_err').textContent = e.message; }
+  return false;
+}
+
 async function deleteProject() {
   if (!editing || !confirm(`Retirer ${editing} du registre ? (puis « Lancer Claude » pour l'arrêter réellement ; les données restent)`)) return;
   await api('/api/projects/' + editing, { method: 'DELETE' }); editor.close(); load();

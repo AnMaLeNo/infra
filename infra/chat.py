@@ -238,7 +238,8 @@ def process_one() -> dict | None:
             error = secrets.mask(cp.stderr[-4000:], secret_values)
             assistant = _append_assistant(data, "", ok=False, log=log_name, error=error)
         else:
-            if data["session"] is None and isinstance(out.get("session_id"), str):
+            # la session à reprendre au prochain message est celle que claude vient de renvoyer (fork au 1er, puis suite)
+            if isinstance(out.get("session_id"), str) and out["session_id"]:
                 data["session"] = out["session_id"]
             text = secrets.mask(out.get("result") or "", secret_values)
             assistant = _append_assistant(
