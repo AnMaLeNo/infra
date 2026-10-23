@@ -15,6 +15,7 @@ def test_command_serves_web_with_token_file(env, home, monkeypatch):
     argv, e = editor.command("172.30.0.1")
     assert argv[:2] == ["/usr/local/bin/vscode-cli", "serve-web"]
     assert argv[argv.index("--host") + 1] == "172.30.0.1" and "--without-connection-token" not in argv
+    assert argv[argv.index("--cli-data-dir") + 1] == str(editor.data_dir())
     assert argv[argv.index("--default-folder") + 1].endswith("config")   # le dossier des runs, comme `claude -p`
     f = home / ".config" / "infra-editor" / "token"
     assert argv[argv.index("--connection-token-file") + 1] == str(f)
@@ -32,7 +33,7 @@ def test_command_requires_cli(env, home, monkeypatch):
 
 
 def test_install_extension_waits_for_server_then_installs(home, monkeypatch):
-    srv = home / ".local/share/vscode-cli/serve-web/abc/bin/code-server"
+    srv = editor.data_dir() / "serve-web/abc/bin/code-server"
     srv.parent.mkdir(parents=True)
     srv.touch()
     codes, ran = iter([202, 302]), []

@@ -25,6 +25,11 @@ CLI = "vscode-cli"
 EXTENSION = "anthropic.claude-code"
 
 
+def data_dir() -> Path:
+    """Fixé explicitement : le serveur VS Code téléchargé et sa CLI (l'emplacement par défaut dépend de la version)."""
+    return Path.home() / ".local" / "share" / "infra-editor"
+
+
 def token_file() -> Path:
     f = Path.home() / ".config" / "infra-editor" / "token"
     if not f.exists():
@@ -43,7 +48,8 @@ def command(host: str) -> tuple[list[str], dict[str, str]]:
     if token:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = token
     return [cli, "serve-web", "--host", host, "--port", str(PORT), "--connection-token-file", str(token_file()),
-            "--default-folder", str(paths.config_dir()), "--accept-server-license-terms", "--disable-telemetry"], env
+            "--cli-data-dir", str(data_dir()), "--default-folder", str(paths.config_dir()),
+            "--accept-server-license-terms", "--disable-telemetry"], env
 
 
 def install_extension(host: str, env: dict[str, str], tries: int = 120) -> bool:
@@ -55,7 +61,7 @@ def install_extension(host: str, env: dict[str, str], tries: int = 120) -> bool:
             ready = httpx.get(url, timeout=5).status_code != 202
         except httpx.HTTPError:
             ready = False
-        servers = sorted((Path.home() / ".local/share/vscode-cli/serve-web").glob("*/bin/code-server"),
+        servers = sorted((data_dir() / "serve-web").glob("*/bin/code-server"),
                          key=lambda p: p.stat().st_mtime)
         if ready and servers:
             return subprocess.run([str(servers[-1]), "--install-extension", EXTENSION], env=env, check=False).returncode == 0
