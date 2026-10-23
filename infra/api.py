@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import ValidationError
 
-from . import __version__, compose, config, history, paths, runner, skills
+from . import __version__, compose, config, editor, history, paths, runner, skills
 from .models import Llm, Project
 from .render import Target
 
@@ -128,6 +128,20 @@ def run_full(file: str):
     """Le run complet (prompt, entrée avant/après, résultat, coût…)."""
     _check_file(file, ".json")
     return runner.get_run(file)
+
+
+@app.post("/api/runs/{file}/editor")
+def run_in_editor(file: str):
+    """Demande à l'éditeur (`infra editor`) d'ouvrir la session Claude de ce run ; le front ouvre ensuite l'éditeur."""
+    _check_file(file, ".json")
+    try:
+        session = runner.session_of(file)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    if not session:
+        raise HTTPException(404, "pas de session enregistrée pour ce run")
+    editor.request_session(session)
+    return {"ok": True}
 
 
 @app.get("/api/runs/{file}/log", response_class=PlainTextResponse)

@@ -1,0 +1,2 @@
+{"name": "infra-open-session", "publisher": "infra", "version": "0.0.1", "engines": {"vscode": "^1.94.0"},
+ "main": "./extension.js", "activationEvents": ["onStartupFinished"], "extensionKind": ["workspace"]}

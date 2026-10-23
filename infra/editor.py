@@ -1,7 +1,8 @@
 """Éditeur web (VS Code de Microsoft, `code serve-web`) pour reprendre la session Claude d'un run.
 
 Il tourne sous le même utilisateur (ai-infra) et ouvre le même dossier (config_dir) que les runs : leurs sessions
-sont donc dans l'historique de l'extension Claude Code, installée au démarrage. Même token Claude et même accès git que
+sont donc dans l'historique de l'extension Claude Code, installée au démarrage avec une petite extension à nous
+(`editor_ext/`) qui ouvre la session demandée par le front. Même token Claude et même accès git que
 le runner. Il n'écoute que sur l'IP de l'hôte vue depuis traefik-net : Traefik le sert en privé (`editor.<private_zone>`,
 tailnet), jamais en public. Accès protégé par un token de connexion (fichier 0600, généré au premier lancement) :
 ouvrir une fois `…/?tkn=<token>`.
@@ -15,6 +16,8 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
+import zipfile
 from pathlib import Path
 
 import httpx
@@ -27,6 +30,8 @@ EXTENSION = "anthropic.claude-code"
 # L'extension n'affiche dans « Session history » les sessions lancées par `claude -p` que si `claudeProcessWrapper` est
 # défini (sinon elle ne montre que celles créées dans VS Code). `env` exécute simplement le binaire embarqué qu'on lui passe.
 SETTINGS = {"claudeCode.claudeProcessWrapper": "/usr/bin/env"}
+# Petite extension à nous (editor_ext/) : au démarrage de VS Code, ouvre la session déposée par `request_session`.
+OPEN_FILE = ".editor-open"
 
 
 def data_dir() -> Path:
@@ -42,6 +47,24 @@ def configure() -> None:
     f = server_dir() / "data" / "Machine" / "settings.json"
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps({**(json.loads(f.read_text()) if f.exists() else {}), **SETTINGS}, indent=2))
+
+
+def request_session(session_id: str) -> None:
+    """Demande à l'éditeur d'ouvrir cette session Claude au prochain démarrage d'une fenêtre (bouton du front)."""
+    f = paths.runs_dir() / OPEN_FILE
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(str(uuid.UUID(session_id)))
+
+
+def build_vsix() -> Path:
+    src = Path(__file__).parent / "editor_ext"
+    out = data_dir() / "infra-open-session.vsix"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(out, "w") as z:
+        for f in sorted(src.rglob("*")):
+            if f.is_file():
+                z.write(f, f.relative_to(src).as_posix())
+    return out
 
 
 def token_file() -> Path:
@@ -68,7 +91,7 @@ def command(host: str) -> tuple[list[str], dict[str, str]]:
 
 def install_extension(host: str, env: dict[str, str], tries: int = 120) -> bool:
     """Le serveur VS Code ne se télécharge qu'à la première requête (202 tant que ça dure) : on la fait, puis on
-    installe/met à jour l'extension avec sa CLI. Idempotent."""
+    installe/met à jour l'extension Claude Code et la nôtre avec sa CLI. Idempotent."""
     url = f"http://{host}:{PORT}/?tkn={token_file().read_text()}"
     for _ in range(tries):
         try:
@@ -78,8 +101,10 @@ def install_extension(host: str, env: dict[str, str], tries: int = 120) -> bool:
         servers = sorted((data_dir() / "serve-web").glob("*/bin/code-server"),
                          key=lambda p: p.stat().st_mtime)
         if ready and servers:
-            cmd = [str(servers[-1]), "--server-data-dir", str(server_dir()), "--install-extension", EXTENSION]
-            return subprocess.run(cmd, env=env, check=False).returncode == 0
+            cli = [str(servers[-1]), "--server-data-dir", str(server_dir())]
+            return all(subprocess.run([*cli, *args], env=env, check=False).returncode == 0
+                       for args in (["--install-extension", EXTENSION],
+                                    ["--install-extension", str(build_vsix()), "--force"]))   # --force : même version, code à jour
         time.sleep(5)
     return False
 

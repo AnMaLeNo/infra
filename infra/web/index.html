@@ -75,7 +75,7 @@
     <table style="flex:1"><tbody id="hitems"></tbody></table>
     <pre id="hdetail" class="muted" style="flex:1.4; max-height:60vh; white-space:pre-wrap">Sélectionne un élément.</pre>
   </div>
-  <div class="row" style="margin-top:12px"><a id="hedit" href="#" target="_blank" rel="noopener" hidden title="Ouvre VS Code (privé, tailnet) sur le dossier des runs : Historique des sessions → celle de ce run">Continuer cette session dans VS Code ↗</a><button type="button" onclick="histdlg.close()">Fermer</button></div>
+  <div class="row" style="margin-top:12px"><button type="button" id="hedit" hidden onclick="continueInEditor()" title="Ouvre VS Code (privé, tailnet) directement sur la session Claude de ce run">Continuer cette session dans VS Code ↗</button><button type="button" onclick="histdlg.close()">Fermer</button></div>
 </dialog>
 
 <dialog id="editor">
@@ -115,7 +115,7 @@
 
 <script>
 const $ = s => document.querySelector(s);
-let editing = null, PROJECTS = {}, HOST = {};
+let editing = null, PROJECTS = {}, HOST = {}, histRun = null;
 // Valeur JS sûre dans un attribut onclick='…' : JSON + apostrophes échappées (sinon un ' dans la
 // donnée ferme l'attribut et le bouton meurt en silence — vu avec un champ legacy « l'ancien tunnel »).
 const js = v => JSON.stringify(v).replace(/'/g, '\\u0027').replace(/</g, '\\u003c').replace(/&/g, '\\u0026');
@@ -176,6 +176,14 @@ async function openHistory(name) {
   $('#hdetail').textContent = 'Sélectionne un élément.'; $('#hdetail').classList.add('muted'); $('#hedit').hidden = true;
   histdlg.showModal();
 }
+// L'onglet est ouvert tout de suite (sinon le navigateur bloque la fenêtre), puis dirigé vers l'éditeur une fois la demande enregistrée.
+async function continueInEditor() {
+  const w = window.open('', '_blank');
+  try {
+    await api('/api/runs/' + histRun + '/editor', { method: 'POST' });
+    w.location = `https://editor.${HOST.private_zone}/?folder=${encodeURIComponent(HOST.config_dir)}`;
+  } catch (e) { w.close(); alert(e.message); }
+}
 function showConfig(i) {
   $('#hedit').hidden = true;
   const c = hist.config[i], prev = hist.config[i - 1];
@@ -186,7 +194,7 @@ function showConfig(i) {
 async function showHistRun(i) {
   const r = hist.runs[i]; const full = await api('/api/runs/' + r.file + '/full');
   const log = r.log ? await api('/api/runs/' + r.log + '/log') : '(pas de déroulé : run dry ou ancien)';
-  $('#hedit').href = `https://editor.${HOST.private_zone}/?folder=${encodeURIComponent(HOST.config_dir)}`; $('#hedit').hidden = !r.log;
+  histRun = r.file; $('#hedit').hidden = !r.log;
   $('#hdetail').classList.remove('muted');
   $('#hdetail').textContent = `# run ${fmt(r.started)} — ${full.ok ? 'réussi' : 'échec'} · ${full.model || '?'}/${full.effort || '?'}`
     + (full.cost_usd ? ` · ${full.cost_usd.toFixed(2)} $` : '') + (full.duration_ms ? ` · ${Math.round(full.duration_ms / 1000)} s` : '')

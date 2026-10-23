@@ -27,7 +27,7 @@ registry.yaml modifié (UI web ou git)  →  rien ne se passe
 
 ## Reprendre la session d'un run
 
-Dans **Historique**, un run a un lien **Continuer cette session dans VS Code** : il ouvre `https://editor.<private_zone>` (VS Code de Microsoft en version web, `code serve-web`, sous `ai-infra`, service `infra-editor`, **privé** : tailnet uniquement) sur le dossier des runs. L'extension Claude Code est installée au démarrage (elle utilise le token Claude de l'hôte) et réglée pour lister les sessions des runs dans « Session history » : choisir celle de la date du run. L'éditeur est un shell complet sous `ai-infra` : première visite avec `?tkn=<token>` (token dans `~ai-infra/.config/infra-editor/token`), un cookie suffit ensuite.
+Dans **Historique**, un run a un bouton **Continuer cette session dans VS Code** : il ouvre `https://editor.<private_zone>` (VS Code de Microsoft en version web, `code serve-web`, sous `ai-infra`, service `infra-editor`, **privé** : tailnet uniquement) directement sur la session Claude de ce run. Les runs nomment leur session (`<projet> · jj/mm hh:mm`) et enregistrent son id ; le bouton le dépose dans `runs/.editor-open`, que lit une petite extension (`infra/editor_ext/`) installée avec l'extension Claude Code, qui utilise le token Claude de l'hôte et est réglée pour lister les sessions des runs. Première visite avec `?tkn=<token>` (token dans `~ai-infra/.config/infra-editor/token`), un cookie suffit ensuite. L'éditeur est un shell complet sous `ai-infra`.
 
 ## Les trois modes d'exposition
 

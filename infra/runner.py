@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -107,7 +108,8 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
         rec.update({"dry": True, "ok": True})
         return rec
     llm = config.host().llm
-    rec.update({"model": llm.model, "effort": llm.effort})
+    # id de session choisi ici (pas lu dans la sortie) et nom lisible : le front ouvre cette session dans l'éditeur (infra/editor.py)
+    rec.update({"model": llm.model, "effort": llm.effort, "session_id": str(uuid.uuid4())})
     ienv = secrets.infra_env()
     # git/gh de Claude : pas de prompt, et GITHUB_TOKEN (repos privés, PR) si présent — jamais écrit sur disque
     env = {**os.environ, **compose.git_env()}
@@ -120,7 +122,8 @@ def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool
     # stream-json + --verbose : on garde TOUT le déroulé (tool calls, textes, résultat) dans runs/<run>.log
     cmd = [claude_bin(), "-p", prompt, "--output-format", "stream-json", "--verbose",
            "--model", llm.model, "--effort", llm.effort, "--allowedTools", ALLOWED_TOOLS,
-           "--permission-mode", "acceptEdits", "--mcp-config", str(mcp_cfg), "--strict-mcp-config"]
+           "--permission-mode", "acceptEdits", "--mcp-config", str(mcp_cfg), "--strict-mcp-config",
+           "--session-id", rec["session_id"], "--name", f"{name} · {started.astimezone():%d/%m %H:%M}"]
     tools.report_path().unlink(missing_ok=True)  # jamais réutiliser le rapport d'un run précédent
     cp = subprocess.run(cmd, check=False, cwd=paths.config_dir(), env=env, text=True, capture_output=True)
     secret_values = list(ienv.values())
@@ -190,6 +193,18 @@ def runs_for_project(name: str) -> list[dict]:
 
 def get_run(file: str) -> dict:
     return json.loads((paths.runs_dir() / file).read_text())
+
+
+def session_of(file: str) -> str | None:
+    """Session Claude d'un run : enregistrée, sinon (runs antérieurs) lue dans le premier événement de son .log."""
+    sid = get_run(file).get("session_id")
+    if sid:
+        return sid
+    log = (paths.runs_dir() / file).with_suffix(".log")
+    try:
+        return json.loads(log.read_text().split("\n", 1)[0]).get("session_id")
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def get_log(file: str) -> str:

@@ -1,8 +1,9 @@
 import json
+import zipfile
 
 import pytest
 
-from infra import editor, secrets
+from infra import editor, paths, runner, secrets
 
 
 @pytest.fixture
@@ -43,7 +44,8 @@ def test_install_extension_waits_for_server_then_installs(home, monkeypatch):
     monkeypatch.setattr(editor.time, "sleep", lambda s: None)
     monkeypatch.setattr(editor.subprocess, "run", lambda cmd, env, check: ran.append(cmd) or type("P", (), {"returncode": 0})())
     assert editor.install_extension("172.30.0.1", {}) is True
-    assert ran == [[str(srv), "--server-data-dir", str(editor.server_dir()), "--install-extension", "anthropic.claude-code"]]
+    cli = [str(srv), "--server-data-dir", str(editor.server_dir()), "--install-extension"]
+    assert ran == [[*cli, "anthropic.claude-code"], [*cli, str(editor.data_dir() / "infra-open-session.vsix"), "--force"]]
 
 
 def test_configure_shows_run_sessions_and_keeps_other_settings(home):
@@ -52,3 +54,42 @@ def test_configure_shows_run_sessions_and_keeps_other_settings(home):
     f.write_text('{"editor.fontSize": 14}')
     editor.configure()
     assert json.loads(f.read_text()) == {"editor.fontSize": 14, "claudeCode.claudeProcessWrapper": "/usr/bin/env"}
+
+
+def test_vsix_has_the_layout_vscode_expects(home):
+    with zipfile.ZipFile(editor.build_vsix()) as z:
+        assert set(z.namelist()) == {"[Content_Types].xml", "extension.vsixmanifest",
+                                     "extension/package.json", "extension/extension.js"}
+
+
+def test_request_session_drops_the_id_for_the_extension(env):
+    editor.request_session("FD3ACD69-38C1-4560-9A1A-F04596739D38")
+    assert (paths.runs_dir() / ".editor-open").read_text() == "fd3acd69-38c1-4560-9a1a-f04596739d38"
+    with pytest.raises(ValueError):
+        editor.request_session("../../etc/passwd")
+
+
+def test_session_of_prefers_the_recorded_id_then_reads_the_log(env):
+    runs = paths.runs_dir()
+    runs.mkdir(exist_ok=True)
+    (runs / "a-p.json").write_text('{"session_id": "recorded"}')
+    (runs / "b-p.json").write_text("{}")
+    (runs / "b-p.log").write_text('{"type": "system", "session_id": "from-log"}\n{"type": "assistant"}\n')
+    (runs / "c-p.json").write_text("{}")
+    assert [runner.session_of(f) for f in ("a-p.json", "b-p.json", "c-p.json")] == ["recorded", "from-log", None]
+
+
+def test_api_route_requests_the_session_of_a_run(env):
+    from fastapi.testclient import TestClient
+
+    from infra import api
+    runs = paths.runs_dir()
+    runs.mkdir(exist_ok=True)
+    (runs / "a-p.json").write_text('{"session_id": "fd3acd69-38c1-4560-9a1a-f04596739d38"}')
+    (runs / "b-p.json").write_text("{}")
+    c = TestClient(api.app)
+    assert c.post("/api/runs/a-p.json/editor").json() == {"ok": True}
+    assert (runs / ".editor-open").read_text() == "fd3acd69-38c1-4560-9a1a-f04596739d38"
+    assert c.post("/api/runs/b-p.json/editor").status_code == 404      # run sans session (dry, très ancien)
+    assert c.post("/api/runs/absent.json/editor").status_code == 404
+    assert c.post("/api/runs/..%2Fx.json/editor").status_code in (400, 404)
