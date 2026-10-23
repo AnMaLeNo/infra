@@ -8,6 +8,7 @@ ouvrir une fois `…/?tkn=<token>`.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -23,11 +24,24 @@ from . import compose, paths, secrets, stack
 PORT = 8443
 CLI = "vscode-cli"
 EXTENSION = "anthropic.claude-code"
+# L'extension n'affiche dans « Session history » les sessions lancées par `claude -p` que si `claudeProcessWrapper` est
+# défini (sinon elle ne montre que celles créées dans VS Code). `env` exécute simplement le binaire embarqué qu'on lui passe.
+SETTINGS = {"claudeCode.claudeProcessWrapper": "/usr/bin/env"}
 
 
 def data_dir() -> Path:
     """Fixé explicitement : le serveur VS Code téléchargé et sa CLI (l'emplacement par défaut dépend de la version)."""
     return Path.home() / ".local" / "share" / "infra-editor"
+
+
+def server_dir() -> Path:
+    return data_dir() / "server"
+
+
+def configure() -> None:
+    f = server_dir() / "data" / "Machine" / "settings.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({**(json.loads(f.read_text()) if f.exists() else {}), **SETTINGS}, indent=2))
 
 
 def token_file() -> Path:
@@ -48,7 +62,7 @@ def command(host: str) -> tuple[list[str], dict[str, str]]:
     if token:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = token
     return [cli, "serve-web", "--host", host, "--port", str(PORT), "--connection-token-file", str(token_file()),
-            "--cli-data-dir", str(data_dir()), "--default-folder", str(paths.config_dir()),
+            "--cli-data-dir", str(data_dir()), "--server-data-dir", str(server_dir()), "--default-folder", str(paths.config_dir()),
             "--accept-server-license-terms", "--disable-telemetry"], env
 
 
@@ -64,7 +78,8 @@ def install_extension(host: str, env: dict[str, str], tries: int = 120) -> bool:
         servers = sorted((data_dir() / "serve-web").glob("*/bin/code-server"),
                          key=lambda p: p.stat().st_mtime)
         if ready and servers:
-            return subprocess.run([str(servers[-1]), "--install-extension", EXTENSION], env=env, check=False).returncode == 0
+            cmd = [str(servers[-1]), "--server-data-dir", str(server_dir()), "--install-extension", EXTENSION]
+            return subprocess.run(cmd, env=env, check=False).returncode == 0
         time.sleep(5)
     return False
 
@@ -72,6 +87,7 @@ def install_extension(host: str, env: dict[str, str], tries: int = 120) -> bool:
 def serve() -> None:
     host = stack.network_gateway()
     argv, env = command(host)
+    configure()
     server = subprocess.Popen(argv, env=env)
     threading.Thread(target=lambda: install_extension(host, env) or print("extension non installée", file=sys.stderr),
                      daemon=True).start()

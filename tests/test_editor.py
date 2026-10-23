@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from infra import editor, secrets
@@ -41,4 +43,12 @@ def test_install_extension_waits_for_server_then_installs(home, monkeypatch):
     monkeypatch.setattr(editor.time, "sleep", lambda s: None)
     monkeypatch.setattr(editor.subprocess, "run", lambda cmd, env, check: ran.append(cmd) or type("P", (), {"returncode": 0})())
     assert editor.install_extension("172.30.0.1", {}) is True
-    assert ran == [[str(srv), "--install-extension", "anthropic.claude-code"]]
+    assert ran == [[str(srv), "--server-data-dir", str(editor.server_dir()), "--install-extension", "anthropic.claude-code"]]
+
+
+def test_configure_shows_run_sessions_and_keeps_other_settings(home):
+    f = editor.server_dir() / "data" / "Machine" / "settings.json"
+    f.parent.mkdir(parents=True)
+    f.write_text('{"editor.fontSize": 14}')
+    editor.configure()
+    assert json.loads(f.read_text()) == {"editor.fontSize": 14, "claudeCode.claudeProcessWrapper": "/usr/bin/env"}
