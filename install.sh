@@ -65,7 +65,7 @@ if ! command -v vscode-cli >/dev/null; then
 fi
 sed "s#@CONFIG_DIR@#$CONFIG_DIR#g" "$TOOL_DIR/deploy/infra-editor.service" > /etc/systemd/system/infra-editor.service
 systemctl daemon-reload
-systemctl enable infra-editor >/dev/null
+systemctl enable --now infra-editor >/dev/null
 
 echo
 echo "Note : sshd n'est pas touché (PasswordAuthentication, clés) — à faire à la main quand tout est stable."
