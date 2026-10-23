@@ -56,6 +56,16 @@ sed "s#@CONFIG_DIR@#$CONFIG_DIR#g" "$TOOL_DIR/deploy/infra-runner.service" > /et
 systemctl daemon-reload
 systemctl enable infra-runner >/dev/null
 
+echo "== éditeur (code-server + extension Claude Code, privé via Traefik : editor.<private_zone>)"
+CODE_SERVER_VERSION=4.141.1
+if ! code-server --version 2>/dev/null | grep -q "^$CODE_SERVER_VERSION"; then
+  curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local --version "$CODE_SERVER_VERSION" >/dev/null
+fi
+sudo -u ai-infra -H code-server --install-extension Anthropic.claude-code >/dev/null
+sed "s#@CONFIG_DIR@#$CONFIG_DIR#g" "$TOOL_DIR/deploy/infra-editor.service" > /etc/systemd/system/infra-editor.service
+systemctl daemon-reload
+systemctl enable infra-editor >/dev/null
+
 echo
 echo "Note : sshd n'est pas touché (PasswordAuthentication, clés) — à faire à la main quand tout est stable."
 echo "OK. Suite : skills/bootstrap-host/SKILL.md (clé age → $CONFIG_DIR/.age-key, tailscale up, infra stack up traefik…)"

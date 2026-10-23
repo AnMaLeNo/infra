@@ -185,6 +185,14 @@ def watch(interval: float = 3.0, once: bool = False, dry: bool = False):
 
 @app.command()
 @_main_guard
+def editor():
+    """Service infra-editor : code-server sur le dossier des runs, pour reprendre la session Claude d'un run (bouton du front)."""
+    from . import editor as ed
+    ed.serve()
+
+
+@app.command()
+@_main_guard
 def enqueue(name: str):
     """Demande un run pour un projet (équivalent du bouton « Lancer Claude » du front)."""
     config.project(name) if name in config.registry().projects else None

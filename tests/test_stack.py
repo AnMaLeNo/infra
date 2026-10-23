@@ -17,7 +17,7 @@ def test_sync_dynamic_merges_tool_and_host(env):
     (dst.mkdir(), (dst / "stale.yml").write_text("x"))
     stack._sync_dynamic(dst)
     names = sorted(p.name for p in dst.glob("*.yml"))
-    assert names == ["dashboard.yml", "ibkr.yml"]
+    assert names == ["dashboard.yml", "editor.yml", "ibkr.yml"]
 
 
 def test_render_static_replaces_env_templates():

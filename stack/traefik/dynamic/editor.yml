@@ -1,0 +1,14 @@
+# Éditeur web (code-server, service systemd infra-editor sur l'hôte), privé uniquement : https://editor.<private_zone>
+http:
+  routers:
+    editor:
+      rule: "Host(`editor.{{ env `PRIVATE_ZONE` }}`)"
+      entryPoints: [tailnet]
+      service: editor
+      tls:
+        certResolver: cf
+  services:
+    editor:
+      loadBalancer:
+        servers:
+          - url: "http://{{ env `TRAEFIK_NET_GATEWAY` }}:8443"
