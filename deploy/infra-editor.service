@@ -1,5 +1,5 @@
 [Unit]
-Description=infra editor — code-server + extension Claude Code, pour reprendre la session d'un run
+Description=infra editor — VS Code web (code serve-web) + extension Claude Code, pour reprendre la session d'un run
 After=network-online.target docker.service
 Wants=network-online.target
 

@@ -1,4 +1,4 @@
-# Éditeur web (code-server, service systemd infra-editor sur l'hôte), privé uniquement : https://editor.<private_zone>
+# Éditeur web (VS Code `serve-web`, service systemd infra-editor sur l'hôte), privé uniquement : https://editor.<private_zone>
 http:
   routers:
     editor:

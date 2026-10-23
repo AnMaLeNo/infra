@@ -27,7 +27,7 @@ registry.yaml modifié (UI web ou git)  →  rien ne se passe
 
 ## Reprendre la session d'un run
 
-Dans **Historique**, un run a un lien **Continuer cette session dans VS Code** : il ouvre `https://editor.<private_zone>` (code-server sous `ai-infra`, service `infra-editor`, **privé** : tailnet uniquement) sur le dossier des runs, avec l'extension Claude Code. Les sessions des runs sont dans son historique de sessions (choisir celle de la date du run). L'éditeur est un shell complet sous `ai-infra` : son mot de passe est dans `~ai-infra/.config/code-server/config.yaml`.
+Dans **Historique**, un run a un lien **Continuer cette session dans VS Code** : il ouvre `https://editor.<private_zone>` (VS Code de Microsoft en version web, `code serve-web`, sous `ai-infra`, service `infra-editor`, **privé** : tailnet uniquement) sur le dossier des runs. Installer une fois l'extension Claude Code dans cet éditeur ; les sessions des runs sont dans son historique de sessions (choisir celle de la date du run). L'éditeur est un shell complet sous `ai-infra` : première visite avec `?tkn=<token>` (token dans `~ai-infra/.config/infra-editor/token`), un cookie suffit ensuite.
 
 ## Les trois modes d'exposition
 
