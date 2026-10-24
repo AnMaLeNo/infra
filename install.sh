@@ -56,6 +56,17 @@ sed "s#@CONFIG_DIR@#$CONFIG_DIR#g" "$TOOL_DIR/deploy/infra-runner.service" > /et
 systemctl daemon-reload
 systemctl enable infra-runner >/dev/null
 
+echo "== éditeur (VS Code de Microsoft en web, code serve-web, privé via Traefik : editor.<private_zone>)"
+case "$(uname -m)" in aarch64|arm64) VSC_OS=cli-alpine-arm64 ;; *) VSC_OS=cli-alpine-x64 ;; esac
+if ! command -v vscode-cli >/dev/null; then
+  mkdir -p /usr/local/lib/vscode-cli
+  curl -fsSL "https://code.visualstudio.com/sha/download?build=stable&os=$VSC_OS" | tar -xz -C /usr/local/lib/vscode-cli
+  ln -sfn /usr/local/lib/vscode-cli/code /usr/local/bin/vscode-cli
+fi
+sed "s#@CONFIG_DIR@#$CONFIG_DIR#g" "$TOOL_DIR/deploy/infra-editor.service" > /etc/systemd/system/infra-editor.service
+systemctl daemon-reload
+systemctl enable --now infra-editor >/dev/null
+
 echo
 echo "Note : sshd n'est pas touché (PasswordAuthentication, clés) — à faire à la main quand tout est stable."
 echo "OK. Suite : skills/bootstrap-host/SKILL.md (clé age → $CONFIG_DIR/.age-key, tailscale up, infra stack up traefik…)"

@@ -75,7 +75,7 @@
     <table style="flex:1"><tbody id="hitems"></tbody></table>
     <pre id="hdetail" class="muted" style="flex:1.4; max-height:60vh; white-space:pre-wrap">Sélectionne un élément.</pre>
   </div>
-  <div class="row" style="margin-top:12px"><span></span><button type="button" onclick="histdlg.close()">Fermer</button></div>
+  <div class="row" style="margin-top:12px"><button type="button" id="hedit" hidden onclick="continueInEditor()" title="Ouvre VS Code (privé, tailnet) directement sur la session Claude de ce run">Continuer cette session dans VS Code ↗</button><button type="button" onclick="histdlg.close()">Fermer</button></div>
 </dialog>
 
 <dialog id="editor">
@@ -115,7 +115,7 @@
 
 <script>
 const $ = s => document.querySelector(s);
-let editing = null, PROJECTS = {};
+let editing = null, PROJECTS = {}, HOST = {}, histRun = null;
 // Valeur JS sûre dans un attribut onclick='…' : JSON + apostrophes échappées (sinon un ' dans la
 // donnée ferme l'attribut et le bouton meurt en silence — vu avec un champ legacy « l'ancien tunnel »).
 const js = v => JSON.stringify(v).replace(/'/g, '\\u0027').replace(/</g, '\\u003c').replace(/&/g, '\\u0026');
@@ -123,7 +123,7 @@ async function api(path, opts) { const r = await fetch(path, opts); if (!r.ok) t
 
 async function load() {
   const [h, projects, runs] = await Promise.all([api('/api/host'), api('/api/projects'), api('/api/runs?limit=30')]);
-  PROJECTS = projects;
+  PROJECTS = projects; HOST = h;
   $('#hostinfo').textContent = `${h.name} · ${h.tailscale_ip} · privé *.${h.private_zone} · public ${h.public_ingress} · v${h.version}`;
   $('#btn_settings').textContent = `⚙ Claude : ${h.llm.model} / ${h.llm.effort}`;
   $('#projects').innerHTML = Object.entries(projects).map(([name, p]) => {
@@ -173,10 +173,19 @@ async function openHistory(name) {
     return `<tr style="cursor:pointer" onclick="showHistRun(${it.i})"><td><span class="dot ${r.ok ? 'ok' : 'ko'}"></span><span class="tag">run</span>${r.dry ? ' <span class="tag">dry</span>' : ''}</td>
       <td>${r.ok ? 'réussi' : 'échec'} · ${r.model || '?'}/${r.effort || '?'}${r.num_turns ? ' · ' + r.num_turns + ' tours' : ''}${r.cost_usd ? ' · ' + r.cost_usd.toFixed(2) + ' $' : ''}</td><td class="muted right">${fmt(r.started)}</td></tr>`;
   }).join('') || '<tr><td class="muted">Rien encore pour ce projet.</td></tr>';
-  $('#hdetail').textContent = 'Sélectionne un élément.'; $('#hdetail').classList.add('muted');
+  $('#hdetail').textContent = 'Sélectionne un élément.'; $('#hdetail').classList.add('muted'); $('#hedit').hidden = true;
   histdlg.showModal();
 }
+// L'onglet est ouvert tout de suite (sinon le navigateur bloque la fenêtre), puis dirigé vers l'éditeur une fois la demande enregistrée.
+async function continueInEditor() {
+  const w = window.open('', '_blank');
+  try {
+    await api('/api/runs/' + histRun + '/editor', { method: 'POST' });
+    w.location = `https://editor.${HOST.private_zone}/?folder=${encodeURIComponent(HOST.config_dir)}`;
+  } catch (e) { w.close(); alert(e.message); }
+}
 function showConfig(i) {
+  $('#hedit').hidden = true;
   const c = hist.config[i], prev = hist.config[i - 1];
   $('#hdetail').classList.remove('muted');
   $('#hdetail').textContent = `# ${fmt(c.at)} · source : ${c.source}\n\n` + (c.entry ? JSON.stringify(c.entry, null, 2) : '(retirée du registre)')
@@ -185,6 +194,7 @@ function showConfig(i) {
 async function showHistRun(i) {
   const r = hist.runs[i]; const full = await api('/api/runs/' + r.file + '/full');
   const log = r.log ? await api('/api/runs/' + r.log + '/log') : '(pas de déroulé : run dry ou ancien)';
+  histRun = r.file; $('#hedit').hidden = !r.log;
   $('#hdetail').classList.remove('muted');
   $('#hdetail').textContent = `# run ${fmt(r.started)} — ${full.ok ? 'réussi' : 'échec'} · ${full.model || '?'}/${full.effort || '?'}`
     + (full.cost_usd ? ` · ${full.cost_usd.toFixed(2)} $` : '') + (full.duration_ms ? ` · ${Math.round(full.duration_ms / 1000)} s` : '')

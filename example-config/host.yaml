@@ -16,4 +16,6 @@ stacks: [traefik, cloudflared, ui, mosquitto]
 exceptions:                              # ce qui ne tourne pas en Docker, et pourquoi
   - name: infra-runner
     reason: lance `claude -p` avec la session Claude de l'hôte et pilote docker/systemd
+  - name: infra-editor
+    reason: VS Code web (`code serve-web`, Microsoft) sous ai-infra pour reprendre la session Claude d'un run ; doit voir ~ai-infra/.claude et le dossier des runs
 notes: ""
