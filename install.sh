@@ -56,7 +56,7 @@ sed "s#@CONFIG_DIR@#$CONFIG_DIR#g" "$TOOL_DIR/deploy/infra-runner.service" > /et
 systemctl daemon-reload
 systemctl enable infra-runner >/dev/null
 
-echo "== éditeur (VS Code de Microsoft en web, `code serve-web`, privé via Traefik : editor.<private_zone>)"
+echo "== éditeur (VS Code de Microsoft en web, code serve-web, privé via Traefik : editor.<private_zone>)"
 case "$(uname -m)" in aarch64|arm64) VSC_OS=cli-alpine-arm64 ;; *) VSC_OS=cli-alpine-x64 ;; esac
 if ! command -v vscode-cli >/dev/null; then
   mkdir -p /usr/local/lib/vscode-cli
