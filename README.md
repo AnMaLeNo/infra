@@ -72,7 +72,7 @@ docs/                 conventions (chemins, réseaux, labels, noms), architectur
 skills/               1 SKILL.md par opération, écrits pour un LLM
   expose/{none,private,public}/   service/{compose,static}/   previews/   undeploy/
   bootstrap-host/   agent-account/   secrets/   migrate-legacy/
-stack/                compose des services d'infra : traefik/, cloudflared/, ui/, mosquitto/
+stack/                compose des services d'infra de l'outil : traefik/, cloudflared/, ui/ (les services partagés entre projets sont dans shared.yaml)
 infra/                CLI, serveur MCP (`infra mcp`), API/UI, runner (Python)
 example-config/       à quoi ressemble un repo de config
 install.sh            installation de l'outil sur un hôte déjà bootstrappé

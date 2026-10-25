@@ -31,12 +31,15 @@ if ! id ai-infra >/dev/null 2>&1; then
   useradd -m -s /bin/bash -G docker,infra -c "Agent autonome (infra runner)" ai-infra
 fi
 usermod -aG docker,infra ai-infra
-mkdir -p /srv/apps /srv/data /srv/stack "$CONFIG_DIR/runs"
-chgrp -R infra /srv/apps /srv/data /srv/stack "$CONFIG_DIR" 2>/dev/null || true
-chmod -R g+rwX /srv/apps /srv/data /srv/stack "$CONFIG_DIR/runs"
-chmod g+s /srv/apps /srv/data /srv/stack "$CONFIG_DIR/runs"
+mkdir -p /srv/apps /srv/data /srv/stack /srv/shared "$CONFIG_DIR/runs" "$CONFIG_DIR/shared"
+chgrp -R infra /srv/apps /srv/data /srv/stack /srv/shared "$CONFIG_DIR" 2>/dev/null || true
+chmod -R g+rwX /srv/apps /srv/data /srv/stack /srv/shared "$CONFIG_DIR/runs" "$CONFIG_DIR/shared"
+chmod g+s /srv/apps /srv/data /srv/stack /srv/shared "$CONFIG_DIR/runs" "$CONFIG_DIR/shared"
 # UI (conteneur, uid ai-infra) et runner écrivent la config et la file : groupe infra en écriture
-chmod g+rw "$CONFIG_DIR/registry.yaml" "$CONFIG_DIR/host.yaml"
+# (shared.yaml est créé ici s'il manque : l'UI ne peut pas créer de fichier dans $CONFIG_DIR, qui reste root)
+[ -f "$CONFIG_DIR/shared.yaml" ] || printf 'services: {}\n' > "$CONFIG_DIR/shared.yaml"
+chgrp infra "$CONFIG_DIR/registry.yaml" "$CONFIG_DIR/host.yaml" "$CONFIG_DIR/shared.yaml"
+chmod g+rw "$CONFIG_DIR/registry.yaml" "$CONFIG_DIR/host.yaml" "$CONFIG_DIR/shared.yaml"
 git config --system --add safe.directory '*' 2>/dev/null || true
 cat > /etc/sudoers.d/ai-infra <<'SUDO'
 Defaults:ai-infra log_input, log_output
