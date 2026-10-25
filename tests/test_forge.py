@@ -65,3 +65,14 @@ def test_answer_requires_pending_question(env):
     _runs(env)
     with pytest.raises(ValueError):
         forge.answer(f"{OK}.json", "peu importe")
+
+
+def test_judge_timeout_is_indisponible(env, monkeypatch):
+    d = _runs(env)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "x")
+    config.set_forge(mode="shadow")
+    import time
+    monkeypatch.setattr(forge, "episode", lambda *a, **k: time.sleep(5))
+    rec = json.loads((d / f"{OK}.json").read_text())
+    v = forge.judge(rec, "", episode_id=OK, timeout_s=0.2)
+    assert v["decision"] == "indisponible" and "120" not in v["errors"][0] and "pas de verdict" in v["errors"][0]

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 
 from . import config, paths, secrets
@@ -52,21 +53,34 @@ def episode(rec: dict, stream_json: str, *, episode_id: str):
                    meta={k: rec.get(k) for k in ("project", "model", "cost_usd", "num_turns")})
 
 
-def judge(rec: dict, stream_json: str, *, episode_id: str, mode: str | None = None) -> dict | None:
-    """Verdict skillforge (dict JSON) ou None si forge.mode = off. N'élève jamais d'exception."""
+TIMEOUT_S = 120  # au-delà, verdict `indisponible` : un OpenRouter lent ne doit pas retarder le runner
+
+
+def judge(rec: dict, stream_json: str, *, episode_id: str, mode: str | None = None, timeout_s: float = TIMEOUT_S) -> dict | None:
+    """Verdict skillforge (dict JSON) ou None si forge.mode = off. N'élève jamais d'exception, ne dépasse pas `timeout_s`."""
     f = config.host().forge
     mode = mode or f.mode
     if mode == "off":
         return None
-    try:
-        if not _env_key():
-            return {"decision": "indisponible", "errors": ["OPENROUTER_API_KEY absent de secrets/infra.env"], "episode_id": episode_id}
-        from skillforge import api
-        ep = episode(rec, stream_json, episode_id=episode_id)
-        v = api.improve(ep, store=store(), draft_with_llm=(mode == "ask" and f.draft_with_llm), tag=episode_id)
-        return v.model_dump(mode="json")
-    except Exception as e:  # jamais bloquant pour infra
-        return {"decision": "indisponible", "errors": [f"{type(e).__name__}: {e}"[:300]], "episode_id": episode_id}
+    if not _env_key():
+        return {"decision": "indisponible", "errors": ["OPENROUTER_API_KEY absent de secrets/infra.env"], "episode_id": episode_id}
+    out: dict = {}
+
+    def work():
+        try:
+            from skillforge import api
+            ep = episode(rec, stream_json, episode_id=episode_id)
+            v = api.improve(ep, store=store(), draft_with_llm=(mode == "ask" and f.draft_with_llm), tag=episode_id)
+            out["v"] = v.model_dump(mode="json")
+        except Exception as e:  # jamais bloquant pour infra
+            out["v"] = {"decision": "indisponible", "errors": [f"{type(e).__name__}: {e}"[:300]], "episode_id": episode_id}
+
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    t.join(timeout_s)
+    if t.is_alive():
+        return {"decision": "indisponible", "errors": [f"skillforge : pas de verdict en {timeout_s:.0f} s"], "episode_id": episode_id}
+    return out.get("v")
 
 
 def replay(file: str) -> dict:
@@ -91,7 +105,7 @@ def replay_all() -> list[tuple[str, str]]:
     return out
 
 
-def answer(file: str, text: str, *, apply: bool = False) -> dict:
+def answer(file: str, text: str, *, apply: bool = False, record: bool = True) -> dict:
     """Réponse de l'auteur à la question d'un run : historique de la skill + portée ; si générale et `apply`,
     la précision est ajoutée à la skill **custom** <config>/skills/<id>/SKILL.md (copie de tool/skills si absente)."""
     from skillforge import api
@@ -104,15 +118,21 @@ def answer(file: str, text: str, *, apply: bool = False) -> dict:
     sid = v["passage"]["skill_id"]
     _, skill_text = _skill_texts([sid])[0]
     _env_key()
-    r = api.answer(Answer(skill_id=sid, question=(v.get("question") or {}).get("text") or "", answer=text, episode_id=p.stem),
-                   store=store(), skill_text=skill_text)
+    a = Answer(skill_id=sid, question=(v.get("question") or {}).get("text") or "", answer=text, episode_id=p.stem)
+    if not record:  # aperçu : portée + diff, sans écrire l'historique (le front demande confirmation avant d'appliquer)
+        import tempfile
+        r = api.answer(a, store=Path(tempfile.mkdtemp()), skill_text=skill_text)
+        return r.model_dump(mode="json") | {"preview": True, "custom_exists": (paths.config_dir() / "skills" / sid / "SKILL.md").exists()}
+    r = api.answer(a, store=store(), skill_text=skill_text)
     res = r.model_dump(mode="json")
     rec.setdefault("forge_answers", []).append({"answer": text, "scope": r.scope, "applied": False})
     if apply and r.scope == "general":
         dst = paths.config_dir() / "skills" / sid / "SKILL.md"
         dst.parent.mkdir(parents=True, exist_ok=True)
         head = "## Précisions de l'auteur"
-        body = skill_text.rstrip("\n") + ("" if head in skill_text else f"\n\n{head}") + f"\n- {text.strip()}\n"
+        note = ("" if dst.exists() else f"<!-- Copie de tool/skills/{sid} figée par skillforge le {p.stem[:10]} : cette skill custom masque "
+                "désormais celle de l'outil ; les évolutions de tool/skills ne s'appliquent plus ici. -->\n")
+        body = note + skill_text.rstrip("\n") + ("" if head in skill_text else f"\n\n{head}") + f"\n- {text.strip()}\n"
         dst.write_text(body)
         rec["forge_answers"][-1]["applied"] = str(dst)
         res["applied_to"] = str(dst)

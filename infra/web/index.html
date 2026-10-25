@@ -304,12 +304,23 @@ function forgeText(v) {
   if (v.errors && v.errors.length) t += `\nErreurs : ${v.errors.join(' ; ')}`;
   return t;
 }
+// Deux temps : aperçu (portée + diff, rien d'écrit) → confirmation → enregistrement (+ application si demandée et générale).
 async function forgeAnswer(apply) {
-  const a = prompt(apply ? 'Ta réponse (si elle est générale, elle sera ajoutée à la skill custom) :' : 'Ta réponse (historique de la skill seulement) :');
+  const a = prompt(apply ? 'Ta réponse (si elle est générale, elle sera ajoutée à la skill custom après confirmation) :' : 'Ta réponse (historique de la skill seulement) :');
   if (!a) return;
-  try { const r = await api('/api/runs/' + histRun + '/forge/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ answer: a, apply }) });
-    gitNotice(r); alert(`Portée : ${r.scope} (générale p=${r.general_probability.toFixed(2)})` + (r.applied_to ? `\nAjoutée à ${r.applied_to}` : '') + (r.proposed_patch ? `\n\n${r.proposed_patch.diff}` : '')); }
-  catch (e) { alert(e.message); }
+  const post = body => api('/api/runs/' + histRun + '/forge/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const p = n => (typeof n === 'number' ? n.toFixed(2) : '?');
+  try {
+    const pre = await post({ answer: a, preview: true });
+    let msg = `Portée : ${pre.scope} (générale p=${p(pre.general_probability)}, contredit la skill p=${p(pre.contradicts_skill)})`;
+    if (apply && pre.scope === 'general') {
+      msg += `\n\nDiff qui sera appliqué :\n${pre.proposed_patch ? pre.proposed_patch.diff : ''}`;
+      if (!pre.custom_exists) msg += `\n\nATTENTION : la skill custom n'existe pas encore ; une COPIE de tool/skills sera créée et masquera désormais la skill de l'outil (ses évolutions ne s'appliqueront plus ici).`;
+    } else if (apply) { msg += `\n\nRéponse jugée ponctuelle : elle ira dans l'historique de la skill, rien ne sera appliqué.`; }
+    if (!confirm(msg + '\n\nEnregistrer ?')) return;
+    const r = await post({ answer: a, apply });
+    gitNotice(r); alert(r.applied_to ? `Ajoutée à ${r.applied_to}` : 'Réponse enregistrée dans l\'historique de la skill.');
+  } catch (e) { alert(e.message); }
 }
 
 function openEditor(name) {

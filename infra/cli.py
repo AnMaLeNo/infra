@@ -26,10 +26,10 @@ forge_app = typer.Typer(no_args_is_help=True, help="skillforge : juge des skills
 
 
 @forge_app.command("mode")
-def forge_mode(mode: str = typer.Argument(..., help="off | shadow | ask"), budget_usd: float | None = None):
+def forge_mode(mode: str = typer.Argument(..., help="off | shadow | ask")):
     """Règle host.yaml → forge.mode (shadow = verdict écrit dans chaque run, rien affiché ; ask = questions dans le front)."""
     from . import gitsync
-    f = config.set_forge(mode=mode, budget_usd=budget_usd).model_dump()
+    f = config.set_forge(mode=mode).model_dump()
     typer.echo(json.dumps(f | {"git": gitsync.commit_push(f"cli : forge {mode}")}, ensure_ascii=False))
 
 

@@ -43,7 +43,8 @@ information que seul l'auteur de la skill peut donner : passage, extraits bruts,
 jugée générale est ajoutée à la skill **custom** `<config>/skills/<chemin>/SKILL.md`, une réponse ponctuelle reste dans
 l'historique de la skill `<config>/forge/qa_history.jsonl`). Une panne de skillforge donne `indisponible`, jamais un
 run en échec. `OPENROUTER_API_KEY` dans `secrets/infra.env` (JEV ; ~0,001 $ par run). `infra forge replay` rejoue les
-runs passés ; `infra forge mode shadow|ask|off`.
+runs passés ; `infra forge mode shadow|ask|off`. Attention : « appliquer » crée une copie custom de la skill qui masque celle
+de `tool/skills` (ses évolutions ne s'appliquent plus sur cet hôte) ; le front prévient et demande confirmation.
 
 ## Services partagés (`shared.yaml`)
 

@@ -66,14 +66,15 @@ def run_forge(file: str):
 
 @app.post("/api/runs/{file}/forge/answer")
 def run_forge_answer(file: str, body: dict):
-    """Réponse de l'auteur ; `apply: true` ajoute une réponse générale à la skill custom (<config>/skills/…)."""
+    """Réponse de l'auteur ; `preview: true` = portée + diff sans rien écrire ; `apply: true` ajoute une réponse générale
+    à la skill custom (<config>/skills/…)."""
     from . import forge
     _check_file(file, ".json")
     try:
-        r = forge.answer(file, str(body.get("answer", "")).strip(), apply=bool(body.get("apply")))
+        r = forge.answer(file, str(body.get("answer", "")).strip(), apply=bool(body.get("apply")), record=not body.get("preview"))
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
-    return r | {"git": gitsync.commit_push(f"forge : réponse de l'auteur ({r['scope']})")}
+    return r if r.get("preview") else r | {"git": gitsync.commit_push(f"forge : réponse de l'auteur ({r['scope']})")}
 
 
 @app.get("/api/projects")

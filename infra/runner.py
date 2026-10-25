@@ -207,11 +207,14 @@ def _run(name: str, prompt: str, skill_list: list[str], previous: dict | None, a
     rec["ok"] = cp.returncode == 0 and not rec.get("is_error") and rec["status"] == "ok"
     rec["finished"] = datetime.now(UTC).isoformat()
     masked_log = secrets.mask(cp.stdout, secret_values)
-    # skillforge (host.yaml → forge.mode) : juge la skill à partir du déroulé masqué ; jamais bloquant, n'affecte pas `ok`
-    rec["forge"] = forge.judge(rec, masked_log, episode_id=f"{started:%Y%m%dT%H%M%S}-{name}")
     p = _save(rec)
     p.with_suffix(".log").write_text(masked_log
                                      + ("\n\n--- stderr ---\n" + secrets.mask(cp.stderr, secret_values) if cp.stderr else ""))
+    # skillforge (host.yaml → forge.mode) : juge la skill à partir du déroulé masqué, après que le run est enregistré ;
+    # jamais bloquant (timeout global, `indisponible`), n'affecte pas `ok`
+    rec["forge"] = forge.judge(rec, masked_log, episode_id=p.stem)
+    if rec["forge"] is not None:
+        _save(rec)
     return rec
 
 

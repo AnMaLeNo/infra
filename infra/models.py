@@ -32,7 +32,6 @@ class Forge(BaseModel):
     """skillforge (juge de skills) : `off` = rien ; `shadow` = verdict écrit dans chaque run, rien affiché ;
     `ask` = questions à l'auteur affichées dans le front et réponses appliquées (diff à valider)."""
     mode: Literal["off", "shadow", "ask"] = "off"
-    budget_usd: float = 0.05
     draft_with_llm: bool = False       # question rédigée par claude -p (sinon assemblée par code)
 
 
