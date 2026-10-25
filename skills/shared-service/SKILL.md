@@ -6,7 +6,7 @@ description: Un service consommé par plusieurs projets (broker MQTT, base de do
 Le service partagé `<S>` déclaré dans `shared.yaml` existe en **un seul exemplaire** sur l'hôte, conforme aux choix humains (type, IPs d'écoute, port, auth, données), et chaque projet qui le déclare dans `uses:` peut le joindre par le nom `<S>`. Il appartient à l'hôte, pas à un projet : aucun projet ne doit en lancer sa propre copie.
 
 ## État cible
-- `<config>/shared/<S>/docker-compose.yml` (+ fichiers de conf) existe, écrit par toi, **commité et poussé** dans le repo de config (c'est ce qui permet de reconstruire l'hôte). Image à tag explicite (jamais `latest`), `restart: unless-stopped`, healthcheck.
+- `<config>/shared/<S>/docker-compose.yml` (+ fichiers de conf) existe, écrit par toi dans le repo de config (c'est ce qui permet de reconstruire l'hôte) ; commite et pousse si tu en as le droit, sinon dis-le dans ton résumé (l'humain ou l'outil le fera), ce n'est pas bloquant. Image à tag explicite (jamais `latest`), `restart: unless-stopped`, healthcheck.
 - `docker compose -p shared-<S> --project-directory <config>/shared/<S> up -d` est passé ; conteneur `running`/`healthy` (tool `shared_status`).
 - Le conteneur est sur `traefik-net` avec l'alias réseau `<S>` (`shared_status.alias_ok`) : les projets le joignent en `<S>:<port interne>`.
 - Si `port` est déclaré : publié **uniquement** sur les IPs de `listen` (`lan` → `host.yaml: lan_ip`, `tailnet` → `tailscale_ip`), une ligne `ports:` par IP (`"<ip>:<port>:<port>"`). `shared_status.listening` == `listen_wanted`, `on_all_interfaces` faux. Si `port` est absent : aucun `ports:`.
