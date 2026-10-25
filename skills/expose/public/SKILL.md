@@ -10,6 +10,7 @@ description: Joignable depuis internet sur https://<domain>.<public_zone> via le
 - Un `CNAME <domain>.<public_zone> → <tunnel_id>.cfargotunnel.com` proxied existe (`dns_ensure`), ou un `A` vers `public_ip` en mode direct. C'est **la seule** chose qui rend le projet public : l'ingress du tunnel est un catch-all vers Traefik, rien à configurer dans Cloudflare.
 - `curl -sI https://<domain>.<public_zone>/` → 2xx/3xx avec `server: cloudflare` (propagation : jusqu'à 2 min).
 - Si `previews: public`, voir `previews/`.
+- Si `entries:` contient des entrées `public` : un CNAME par entrée (`<label>.<public_zone>`, créé par le même `dns_ensure`) et un routeur `<P>-<label>-public` ; `curl -sI` sur chacune. Le port de chaque entrée est un constat (`entry_ports`, voir `service/compose`).
 
 ## Outils utiles
 `host_info`, `traefik_labels`, `compose_override`, `dns_ensure`, `dns_list`, `project_status`, `docker logs infra-cloudflared`.

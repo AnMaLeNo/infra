@@ -40,6 +40,9 @@ chmod g+s /srv/apps /srv/data /srv/stack /srv/shared "$CONFIG_DIR/runs" "$CONFIG
 [ -f "$CONFIG_DIR/shared.yaml" ] || printf 'services: {}\n' > "$CONFIG_DIR/shared.yaml"
 chgrp infra "$CONFIG_DIR/registry.yaml" "$CONFIG_DIR/host.yaml" "$CONFIG_DIR/shared.yaml"
 chmod g+rw "$CONFIG_DIR/registry.yaml" "$CONFIG_DIR/host.yaml" "$CONFIG_DIR/shared.yaml"
+# le runner journalise les migrations dans docs/migrations.md
+mkdir -p "$CONFIG_DIR/docs"
+chgrp -R infra "$CONFIG_DIR/docs" && chmod -R g+rwX "$CONFIG_DIR/docs" && chmod g+s "$CONFIG_DIR/docs"
 git config --system --add safe.directory '*' 2>/dev/null || true
 # le runner (ai-infra) commite et pousse la config après chaque run : dépôt partagé avec le groupe infra
 if [ -d "$CONFIG_DIR/.git" ]; then

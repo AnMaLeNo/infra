@@ -80,12 +80,16 @@ def wanted_records(name: str, prj: Project, h: Host) -> list[tuple[str, str, str
         out.append((f"*.{d}.{h.public_zone}", *pub))
     if prj.previews == "private":
         out.append((f"*.{d}.{h.private_zone}", "A", h.tailscale_ip, False))
+    for label, exp in prj.entries.items():
+        if exp == "public":
+            out.append((f"{label}.{h.public_zone}", *pub))
     return out
 
 
 def project_names(name: str, prj: Project, h: Host) -> list[str]:
     d = config.domain_of(name, prj)
-    return [f"{d}.{h.public_zone}", f"*.{d}.{h.public_zone}", f"*.{d}.{h.private_zone}"]
+    return [f"{d}.{h.public_zone}", f"*.{d}.{h.public_zone}", f"*.{d}.{h.private_zone}",
+            *(f"{label}.{h.public_zone}" for label in prj.entries)]
 
 
 def ensure_project(name: str, prj: Project, h: Host, force: bool = False) -> dict[str, str]:

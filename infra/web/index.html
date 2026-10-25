@@ -124,6 +124,7 @@
     </div>
     <div class="row">
       <div><label>Domaine <span class="muted">(un label)</span></label><input id="f_domain" placeholder="= nom"></div>
+      <div><label>Entrées suppl. <span class="muted">(label=expose, …)</span></label><input id="f_entries" placeholder="dashboard=public" title="Autres hostnames du même container, vers d'autres ports (constatés par Claude) : <label>.<zone> → none|private|public"></div>
     </div>
     <p class="help" id="ed_decided"></p>
     <div class="row">
@@ -167,8 +168,8 @@ async function load() {
     const urls = Object.entries(p.urls).map(([k, u]) => `<a href="${u}" target="_blank">${u.replace('https://','')}</a>`).join('<br>');
     return `<tr>
       <td><span class="dot ${dot}" title="${title}"></span></td>
-      <td><b>${name}</b>${e.enabled ? '' : ' <span class="tag">désactivé</span>'}<br><a class="muted" href="${e.repo}" target="_blank">${e.repo.replace('https://github.com/','')}</a></td>
-      <td>${e.service || '<span class="muted" title="Claude choisit compose ou static au run">auto</span>'}${e.container || e.port ? `<br><span class="muted" title="constaté par Claude">${e.container || '?'}:${e.port ?? '?'}</span>` : ''}</td><td><span class="tag ${e.expose}">${e.expose}</span></td><td>${e.previews === 'none' ? '—' : `<span class="tag ${e.previews}">${e.previews}</span>`}</td>
+      <td><b>${name}</b>${e.enabled ? '' : ' <span class="tag">désactivé</span>'}${e.pr_proposed ? ` <a class="tag pr" href="${e.pr_proposed}" target="_blank" title="Le repo n'avait ni Dockerfile ni compose : Claude les a écrits, a ouvert cette PR et déploie depuis sa branche (ref = ${e.ref}). Après merge, le prochain run repasse ref sur main.">PR Docker en attente ↗</a>` : ''}<br><a class="muted" href="${e.repo}" target="_blank">${e.repo.replace('https://github.com/','')}</a></td>
+      <td>${e.service || '<span class="muted" title="Claude choisit compose ou static au run">auto</span>'}${e.container || e.port ? `<br><span class="muted" title="constaté par Claude">${e.container || '?'}:${e.port ?? '?'}</span>` : ''}</td><td><span class="tag ${e.expose}">${e.expose}</span>${Object.entries(e.entries || {}).map(([l, x]) => `<br><span class="tag ${x}" title="entrée supplémentaire ${l} → port ${e.entry_ports?.[l] ?? '? (constaté par Claude au run)'}">${l}: ${x}</span>`).join('')}</td><td>${e.previews === 'none' ? '—' : `<span class="tag ${e.previews}">${e.previews}</span>`}</td>
       <td>${urls || '—'}</td>
       <td class="muted">${p.last_at ? new Date(p.last_at).toLocaleString('fr-FR') : '—'}</td>
       <td class="right"><button class="${p.changed && !busy ? 'primary' : ''}" ${busy ? 'disabled' : ''} onclick='requestRun(${js(name)})' title="Lance claude -p sur ce projet avec ses skills">${p.running ? 'En cours…' : p.queued ? 'En attente' : 'Lancer Claude'}</button></td>
@@ -294,6 +295,7 @@ function openEditor(name) {
   $('#f_name').value = name || ''; $('#f_name').disabled = !!name;
   $('#f_repo').value = e.repo || ''; $('#f_service').value = e.service || ''; $('#f_expose').value = e.expose || 'private';
   $('#f_previews').value = e.previews || 'none'; $('#f_domain').value = e.domain || '';
+  $('#f_entries').value = Object.entries(e.entries || {}).map(([l, x]) => `${l}=${x}`).join(', ');
   $('#f_ref').value = e.ref || 'main'; $('#f_uses').value = (e.uses || []).join(',');
   const decided = (name && PROJECTS[name]?.decided) || {};
   $('#ed_decided').textContent = Object.keys(decided).length
@@ -308,6 +310,7 @@ async function saveProject(ev) {
   const name = $('#f_name').value.trim();
   const body = { repo: $('#f_repo').value.trim(), service: $('#f_service').value || null, expose: $('#f_expose').value, previews: $('#f_previews').value,
     domain: $('#f_domain').value.trim() || null, ref: $('#f_ref').value.trim() || 'main',
+    entries: Object.fromEntries($('#f_entries').value.split(',').map(s => s.trim()).filter(Boolean).map(s => { const [l, x] = s.split('='); return [l.trim(), (x || 'private').trim()]; })),
     uses: $('#f_uses').value.split(',').map(s => s.trim()).filter(Boolean), enabled: $('#f_enabled').value === 'true',
     env: $('#f_env').value === 'true', notes: $('#f_notes').value };
   try { gitNotice(await api('/api/projects/' + name, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })); editor.close(); load(); }
