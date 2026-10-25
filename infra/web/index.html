@@ -67,7 +67,7 @@
     <label>Nom <span class="muted">(a-z0-9-, = alias DNS sur traefik-net)</span></label><input id="s_name" required pattern="[a-z0-9][a-z0-9\-]*" placeholder="mqtt">
     <label>Type <span class="muted">(ce que c'est, pas comment)</span></label><input id="s_kind" required placeholder="mqtt-broker, postgres…">
     <div class="row">
-      <div><label>Écoute sur l'hôte <span class="muted">(jamais 0.0.0.0)</span></label><div style="display:flex; gap:16px; padding:8px 0"><label style="display:flex; gap:6px; align-items:center"><input type="checkbox" id="s_lan"> LAN <span class="muted">(clients sans Tailscale : ESP…)</span></label><label style="display:flex; gap:6px; align-items:center"><input type="checkbox" id="s_tailnet" checked> tailnet</label></div></div>
+      <div><label>Écoute sur l'hôte <span class="muted">(jamais 0.0.0.0)</span></label><div style="display:flex; gap:16px; padding:8px 0; white-space:nowrap"><label style="display:flex; gap:6px; align-items:center" title="Clients sans Tailscale (ESP, autres machines du réseau local) ; exige lan_ip dans host.yaml"><input type="checkbox" id="s_lan"> LAN</label><label style="display:flex; gap:6px; align-items:center" title="Depuis le tailnet (IP Tailscale de l'hôte)"><input type="checkbox" id="s_tailnet" checked> tailnet</label></div></div>
       <div><label>Port publié <span class="muted">(vide = conteneurs seulement)</span></label><input id="s_port" type="number" min="1" max="65535" placeholder="1883"></div>
     </div>
     <div class="row">
