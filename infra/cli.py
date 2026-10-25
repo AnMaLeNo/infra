@@ -139,7 +139,7 @@ def set_cmd(name: str, fields: list[str] = typer.Argument(..., help="cle=valeur 
             kv[k] = v == "true"
         elif v.isdigit():
             kv[k] = int(v)
-        elif v.startswith("["):
+        elif v.startswith(("[", "{")):
             kv[k] = yaml.safe_load(v)
         else:
             kv[k] = v
