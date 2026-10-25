@@ -33,6 +33,18 @@ Dans **Historique**, un run a un bouton **Continuer cette session dans VS Code**
 
 Après chaque run, le runner fait `git add -A` + commit + push du repo de config (`infra/gitsync.py`) : les constats de Claude (`registry.yaml`, `shared.yaml`), les définitions qu'il écrit (`shared/<S>/`), `host.yaml`… sont dans l'historique git sans geste humain, avec le nom du run et son statut en message. Le push passe par https + `GITHUB_TOKEN` (le token doit avoir *Contents: write* sur le repo de config), même si le remote est en ssh. Un push refusé n'échoue pas le run : il est consigné dans le run (`git.error`) et visible dans l'historique. Les écritures faites depuis le front (projets, services partagés, settings) et `infra set` sont commitées et poussées de la même façon (`ui : projet <P> modifié`…) ; la réponse de l'API porte le résultat `git`, et le front affiche un avertissement si le push a été refusé.
 
+## skillforge : juger les skills à partir des runs
+
+[skillforge](https://github.com/AnMaLeNo/skillforge) lit un run (skills données à Claude + déroulé complet + rapport
+`run_report`) et rend un verdict : `rien`, `reformuler` (passage de skill accusé + preuves) ou `demander` (il manque une
+information que seul l'auteur de la skill peut donner : passage, extraits bruts, question — rien n'est inventé).
+`host.yaml → forge.mode` : `off` (défaut), `shadow` (verdict écrit dans chaque `runs/<run>.json`, rien affiché),
+`ask` (question visible dans l'Historique du front, boutons « Répondre » / « Répondre et appliquer » : une réponse
+jugée générale est ajoutée à la skill **custom** `<config>/skills/<chemin>/SKILL.md`, une réponse ponctuelle reste dans
+l'historique de la skill `<config>/forge/qa_history.jsonl`). Une panne de skillforge donne `indisponible`, jamais un
+run en échec. `OPENROUTER_API_KEY` dans `secrets/infra.env` (JEV ; ~0,001 $ par run). `infra forge replay` rejoue les
+runs passés ; `infra forge mode shadow|ask|off`.
+
 ## Services partagés (`shared.yaml`)
 
 Trois catégories de conteneurs sur un hôte : l'**infra** de l'outil (`stack/` : traefik, cloudflared, ui), les **projets** (`registry.yaml`), et les **services partagés** (`shared.yaml`) — un broker MQTT, une base… consommés par plusieurs projets et souvent par des clients hors Docker (ESP, autres machines). Un service partagé existe en **un seul exemplaire** par hôte ; il est déclaré par l'humain (section « Services partagés » du front) avec ses choix : `kind` (ce que c'est), `listen` (`lan` et/ou `tailnet`, jamais 0.0.0.0 ; `lan` exige `host.yaml: lan_ip`), `port`, `auth`, `data`. Claude l'installe au clic (skill `shared-service`) : compose écrit dans `shared/<nom>/` du repo de config, données sous `/srv/shared/<nom>/data`, conteneur sur `traefik-net` avec l'alias `<nom>`. Un projet le consomme avec `uses: [<nom>]` : au run, Claude trouve dans le code quel service compose s'y connecte et par quelles variables (`consumers`, constat), et `compose_override` branche ces services sur `traefik-net` avec ces variables. Un `uses` non déclaré bloque le run du projet au lieu de créer un second exemplaire.

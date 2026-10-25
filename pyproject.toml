@@ -12,6 +12,7 @@ dependencies = [
   "uvicorn>=0.30",
   "jinja2>=3.1",
   "mcp>=1.2",
+  "skillforge @ git+https://github.com/AnMaLeNo/skillforge@ef1ef8943e5cfb73eb7570e0a7547fac431d379e",
 ]
 
 [project.scripts]
@@ -40,3 +41,6 @@ ignore = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.hatch.metadata]
+allow-direct-references = true  # dépendance skillforge épinglée par commit git

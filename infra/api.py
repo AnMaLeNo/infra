@@ -42,6 +42,40 @@ def put_settings(body: dict):
         raise HTTPException(422, str(e)) from e
 
 
+@app.get("/api/forge")
+def forge_settings():
+    """Réglages skillforge (host.yaml → forge)."""
+    return config.host().forge.model_dump()
+
+
+@app.put("/api/forge")
+def put_forge(body: dict):
+    from .models import Forge
+    try:
+        Forge.model_validate({**config.host().forge.model_dump(), **body})
+        return config.set_forge(**body).model_dump() | {"git": gitsync.commit_push("ui : settings skillforge")}
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@app.get("/api/runs/{file}/forge")
+def run_forge(file: str):
+    _check_file(file, ".json")
+    return runner.get_run(file).get("forge") or {"decision": None}
+
+
+@app.post("/api/runs/{file}/forge/answer")
+def run_forge_answer(file: str, body: dict):
+    """Réponse de l'auteur ; `apply: true` ajoute une réponse générale à la skill custom (<config>/skills/…)."""
+    from . import forge
+    _check_file(file, ".json")
+    try:
+        r = forge.answer(file, str(body.get("answer", "")).strip(), apply=bool(body.get("apply")))
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    return r | {"git": gitsync.commit_push(f"forge : réponse de l'auteur ({r['scope']})")}
+
+
 @app.get("/api/projects")
 def projects():
     reg, h = config.registry(), config.host()

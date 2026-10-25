@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from . import compose, config, paths, secrets, skills, tools
+from . import compose, config, forge, paths, secrets, skills, tools
 from .models import Project
 
 ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,mcp__infra"
@@ -206,8 +206,11 @@ def _run(name: str, prompt: str, skill_list: list[str], previous: dict | None, a
     # claude -p sort 0 même quand il s'est déclaré bloqué : c'est son appel à run_report qui fait foi
     rec["ok"] = cp.returncode == 0 and not rec.get("is_error") and rec["status"] == "ok"
     rec["finished"] = datetime.now(UTC).isoformat()
+    masked_log = secrets.mask(cp.stdout, secret_values)
+    # skillforge (host.yaml → forge.mode) : juge la skill à partir du déroulé masqué ; jamais bloquant, n'affecte pas `ok`
+    rec["forge"] = forge.judge(rec, masked_log, episode_id=f"{started:%Y%m%dT%H%M%S}-{name}")
     p = _save(rec)
-    p.with_suffix(".log").write_text(secrets.mask(cp.stdout, secret_values)
+    p.with_suffix(".log").write_text(masked_log
                                      + ("\n\n--- stderr ---\n" + secrets.mask(cp.stderr, secret_values) if cp.stderr else ""))
     return rec
 

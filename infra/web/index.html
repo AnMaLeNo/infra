@@ -109,7 +109,7 @@
     <table style="flex:1"><tbody id="hitems"></tbody></table>
     <pre id="hdetail" class="muted" style="flex:1.4; max-height:60vh; white-space:pre-wrap">Sélectionne un élément.</pre>
   </div>
-  <div class="row" style="margin-top:12px"><button type="button" id="hedit" hidden onclick="continueInEditor()" title="Ouvre VS Code (privé, tailnet) directement sur la session Claude de ce run">Continuer cette session dans VS Code ↗</button><button type="button" onclick="histdlg.close()">Fermer</button></div>
+  <div class="row" style="margin-top:12px"><span id="hforge" hidden><button type="button" onclick="forgeAnswer(false)" title="skillforge : réponse gardée dans l'historique de la skill">Répondre à skillforge</button><button type="button" onclick="forgeAnswer(true)" title="skillforge : si la réponse est générale, elle est ajoutée à la skill custom (diff montré)">Répondre et appliquer</button></span><button type="button" id="hedit" hidden onclick="continueInEditor()" title="Ouvre VS Code (privé, tailnet) directement sur la session Claude de ce run">Continuer cette session dans VS Code ↗</button><button type="button" onclick="histdlg.close()">Fermer</button></div>
 </dialog>
 
 <dialog id="editor">
@@ -157,7 +157,8 @@ const js = v => JSON.stringify(v).replace(/'/g, '\\u0027').replace(/</g, '\\u003
 async function api(path, opts) { const r = await fetch(path, opts); if (!r.ok) { const t = await r.text(); let d; try { d = JSON.parse(t).detail; } catch {} throw new Error(typeof d === 'string' ? d : t); } return r.headers.get('content-type')?.includes('json') ? r.json() : r.text(); }
 
 async function load() {
-  const [h, projects, runs, shared] = await Promise.all([api('/api/host'), api('/api/projects'), api('/api/runs?limit=30'), api('/api/shared')]);
+  const [h, projects, runs, shared, forgeCfg] = await Promise.all([api('/api/host'), api('/api/projects'), api('/api/runs?limit=30'), api('/api/shared'), api('/api/forge').catch(() => ({ mode: 'off' }))]);
+  FORGE = forgeCfg;
   PROJECTS = projects; HOST = h; SHARED = shared;
   $('#hostinfo').textContent = `${h.name} · ${h.tailscale_ip} · privé *.${h.private_zone} · public ${h.public_ingress} · v${h.version}`;
   $('#btn_settings').textContent = `⚙ Claude : ${h.llm.model} / ${h.llm.effort}`;
@@ -246,7 +247,7 @@ async function saveSettings(ev) {
   return false;
 }
 
-let hist = null;
+let hist = null; let FORGE = { mode: 'off' };
 const fmt = d => new Date(d).toLocaleString('fr-FR');
 async function openHistory(name, shared = false) {
   hist = await api((shared ? '/api/shared/' : '/api/projects/') + name + '/history');
@@ -286,7 +287,29 @@ async function showHistRun(i) {
   $('#hdetail').textContent = `# run ${fmt(r.started)} — ${full.ok ? 'réussi' : 'échec'} · ${full.model || '?'}/${full.effort || '?'}`
     + (full.cost_usd ? ` · ${full.cost_usd.toFixed(2)} $` : '') + (full.duration_ms ? ` · ${Math.round(full.duration_ms / 1000)} s` : '')
     + `\n\n## Résumé de Claude\n${full.result || '—'}\n\n## Prompt\n${full.prompt || '—'}`
-    + (full.stderr ? `\n\n## stderr\n${full.stderr}` : '') + `\n\n## Déroulé complet (stream-json)\n${log}`;
+    + (full.stderr ? `\n\n## stderr\n${full.stderr}` : '') + forgeText(full.forge) + `\n\n## Déroulé complet (stream-json)\n${log}`;
+  $('#hforge').hidden = !(full.forge && full.forge.decision === 'demander' && FORGE.mode === 'ask');
+}
+// skillforge : verdict du run (shadow/ask). Rien n'est inventé : passage de la skill, extraits bruts, question.
+function forgeText(v) {
+  if (!v || !v.decision) return '';
+  let t = `\n\n## skillforge — ${v.decision}`;
+  if (v.why && v.why.length) t += `\nPourquoi : ${v.why.join(' ; ')}`;
+  if (v.passage) t += `\nPassage (${v.passage.skill_id} L${v.passage.line}) : ${v.passage.text}`;
+  if (v.behaviours && v.behaviours.length) t += `\nComportements : ${v.behaviours.join(', ')}`;
+  (v.evidence || []).forEach(e => { t += `\n- [${e.kind}] ${e.text.slice(0, 300)}`; });
+  if (v.question) t += `\n\nQUESTION À L'AUTEUR : ${v.question.text}`;
+  if (v.history_hit) t += `\nRéponse déjà donnée (${v.history_hit.scope}, p=${v.history_hit.probability.toFixed(2)}) : ${v.history_hit.answer}`;
+  if (v.proposed_patch) t += `\n\nPatch proposé :\n${v.proposed_patch.diff}`;
+  if (v.errors && v.errors.length) t += `\nErreurs : ${v.errors.join(' ; ')}`;
+  return t;
+}
+async function forgeAnswer(apply) {
+  const a = prompt(apply ? 'Ta réponse (si elle est générale, elle sera ajoutée à la skill custom) :' : 'Ta réponse (historique de la skill seulement) :');
+  if (!a) return;
+  try { const r = await api('/api/runs/' + histRun + '/forge/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ answer: a, apply }) });
+    gitNotice(r); alert(`Portée : ${r.scope} (générale p=${r.general_probability.toFixed(2)})` + (r.applied_to ? `\nAjoutée à ${r.applied_to}` : '') + (r.proposed_patch ? `\n\n${r.proposed_patch.diff}` : '')); }
+  catch (e) { alert(e.message); }
 }
 
 function openEditor(name) {

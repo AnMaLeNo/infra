@@ -28,6 +28,14 @@ class Llm(BaseModel):
     effort: Effort = "high"
 
 
+class Forge(BaseModel):
+    """skillforge (juge de skills) : `off` = rien ; `shadow` = verdict écrit dans chaque run, rien affiché ;
+    `ask` = questions à l'auteur affichées dans le front et réponses appliquées (diff à valider)."""
+    mode: Literal["off", "shadow", "ask"] = "off"
+    budget_usd: float = 0.05
+    draft_with_llm: bool = False       # question rédigée par claude -p (sinon assemblée par code)
+
+
 class Exception_(BaseModel):
     name: str
     reason: str
@@ -43,6 +51,7 @@ class Host(BaseModel):
     lan_ip: str | None = None          # IP LAN de l'hôte (clients sans Tailscale : ESP, autres machines) ; requis par `listen: [lan]`
     cloudflare: Cloudflare = Field(default_factory=Cloudflare)
     llm: Llm = Field(default_factory=Llm)
+    forge: Forge = Field(default_factory=Forge)
     stacks: list[str] = Field(default_factory=lambda: ["traefik", "cloudflared", "ui"])
     exceptions: list[Exception_] = Field(default_factory=list)
     notes: str = ""

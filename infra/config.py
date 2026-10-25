@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 from . import history, paths
-from .models import Host, Llm, Project, Registry, Shared, SharedRegistry
+from .models import Forge, Host, Llm, Project, Registry, Shared, SharedRegistry
 
 
 def load_yaml(p: Path) -> dict:
@@ -41,6 +41,16 @@ def set_llm(**fields) -> Llm:
     h = Host.model_validate(raw)
     dump_yaml(raw, p)
     return h.llm
+
+
+def set_forge(**fields) -> Forge:
+    """Modifie host.yaml → forge (mode off/shadow/ask, budget), depuis le front ou `infra forge mode`."""
+    p = paths.config_dir() / "host.yaml"
+    raw = load_yaml(p)
+    raw["forge"] = {**raw.get("forge", {}), **{k: v for k, v in fields.items() if v is not None}}
+    h = Host.model_validate(raw)
+    dump_yaml(raw, p)
+    return h.forge
 
 
 def set_project_fields(name: str, source: str = "ui", **fields) -> Project:

@@ -8,7 +8,7 @@ import sys
 import typer
 import yaml
 
-from . import __version__, compose, config, paths, runner, secrets, skills
+from . import __version__, compose, config, forge, paths, runner, secrets, skills
 from . import dns as dnsmod
 from . import stack as stackmod
 from . import tunnel as tunnelmod
@@ -22,8 +22,35 @@ secrets_app = typer.Typer(no_args_is_help=True, help="Secrets sops+age")
 preview_app = typer.Typer(no_args_is_help=True, help="Previews par PR")
 tunnel_app = typer.Typer(no_args_is_help=True, help="Cloudflare Tunnel")
 agents_app = typer.Typer(no_args_is_help=True, help="Comptes agents IA")
+forge_app = typer.Typer(no_args_is_help=True, help="skillforge : juge des skills à partir des runs (host.yaml → forge)")
+
+
+@forge_app.command("mode")
+def forge_mode(mode: str = typer.Argument(..., help="off | shadow | ask"), budget_usd: float | None = None):
+    """Règle host.yaml → forge.mode (shadow = verdict écrit dans chaque run, rien affiché ; ask = questions dans le front)."""
+    from . import gitsync
+    typer.echo(json.dumps(config.set_forge(mode=mode, budget_usd=budget_usd).model_dump() | {"git": gitsync.commit_push(f"cli : forge {mode}")}, ensure_ascii=False))
+
+
+@forge_app.command("replay")
+def forge_replay(file: str = typer.Argument(None, help="runs/<fichier>.json ; sans argument : tous les runs")):
+    """Rejoue skillforge sur des runs passés et écrit le verdict dans leur .json (preuve n°1 de l'intégration)."""
+    if file:
+        typer.echo(json.dumps(forge.replay(file), ensure_ascii=False, indent=1))
+    else:
+        for name, d in forge.replay_all():
+            typer.echo(f"{d:12s} {name}")
+
+
+@forge_app.command("answer")
+def forge_answer(file: str, answer: str, apply: bool = typer.Option(False, help="si la réponse est générale : l'ajouter à la skill custom <config>/skills/…")):
+    """Réponse de l'auteur à la question skillforge d'un run (historique de la skill, portée, patch)."""
+    from . import gitsync
+    r = forge.answer(file, answer, apply=apply)
+    typer.echo(json.dumps(r | {"git": gitsync.commit_push(f"forge : réponse de l'auteur ({r['scope']})")}, ensure_ascii=False, indent=1))
+
 for name, sub in (("dns", dns_app), ("stack", stack_app), ("secrets", secrets_app), ("preview", preview_app),
-                  ("tunnel", tunnel_app), ("agents", agents_app)):
+                  ("tunnel", tunnel_app), ("agents", agents_app), ("forge", forge_app)):
     app.add_typer(sub, name=name)
 
 
