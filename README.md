@@ -29,6 +29,10 @@ registry.yaml modifié (UI web ou git)  →  rien ne se passe
 
 Dans **Historique**, un run a un bouton **Continuer cette session dans VS Code** : il ouvre `https://editor.<private_zone>` (VS Code de Microsoft en version web, `code serve-web`, sous `ai-infra`, service `infra-editor`, **privé** : tailnet uniquement) directement sur la session Claude de ce run. Les runs nomment leur session (`<projet> · jj/mm hh:mm`) et enregistrent son id ; le bouton le dépose dans `runs/.editor-open`, que lit une petite extension (`infra/editor_ext/`) installée avec l'extension Claude Code, qui utilise le token Claude de l'hôte et est réglée pour lister les sessions des runs. Première visite avec `?tkn=<token>` (token dans `~ai-infra/.config/infra-editor/token`), un cookie suffit ensuite. L'éditeur est un shell complet sous `ai-infra`.
 
+## Services partagés (`shared.yaml`)
+
+Trois catégories de conteneurs sur un hôte : l'**infra** de l'outil (`stack/` : traefik, cloudflared, ui), les **projets** (`registry.yaml`), et les **services partagés** (`shared.yaml`) — un broker MQTT, une base… consommés par plusieurs projets et souvent par des clients hors Docker (ESP, autres machines). Un service partagé existe en **un seul exemplaire** par hôte ; il est déclaré par l'humain (section « Services partagés » du front) avec ses choix : `kind` (ce que c'est), `listen` (`lan` et/ou `tailnet`, jamais 0.0.0.0 ; `lan` exige `host.yaml: lan_ip`), `port`, `auth`, `data`. Claude l'installe au clic (skill `shared-service`) : compose écrit dans `shared/<nom>/` du repo de config, données sous `/srv/shared/<nom>/data`, conteneur sur `traefik-net` avec l'alias `<nom>`. Un projet le consomme avec `uses: [<nom>]` : au run, Claude trouve dans le code quel service compose s'y connecte et par quelles variables (`consumers`, constat), et `compose_override` branche ces services sur `traefik-net` avec ces variables. Un `uses` non déclaré bloque le run du projet au lieu de créer un second exemplaire.
+
 ## Les trois modes d'exposition
 
 | `expose` | Accessible par | URL | Mécanisme |
@@ -54,7 +58,7 @@ projects:
     container: web          # écrit par Claude au run (service compose qui reçoit le HTTP), pas à saisir
     port: 8420              # idem (port d'écoute dans le container) ; de même compose_file, build, static_dir
     previews: none          # none | private | public
-    needs: [mosquitto]      # stacks partagées requises (stack/<nom>)
+    uses: [mqtt]            # services partagés consommés (shared.yaml)
     env: true               # secrets/projects/catacombes.env (sops)
 ```
 

@@ -15,7 +15,8 @@ projects:
     expose: private
     container: frontend
     port: 80
-    needs: [mosquitto]
+    uses: [mqtt]
+    consumers: {api: {MQTT_HOST: mqtt, MQTT_PORT: "1883"}}   # constat de Claude : qui consomme mqtt, avec quelles variables
     env: true
 
   site-client:

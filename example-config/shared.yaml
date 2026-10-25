@@ -1,0 +1,10 @@
+# Services partagés entre projets (un seul exemplaire par hôte) : voir README § Services partagés.
+# Déclarés depuis le front (section « Services partagés ») ; installés par Claude au clic (skill shared-service).
+# Les choix (kind, listen, port, auth, data) sont humains ; image/container/compose_file sont des constats de Claude.
+services:
+  mqtt:
+    kind: mqtt-broker
+    listen: [lan, tailnet]
+    port: 1883
+    auth: anonymous
+    notes: "2 ESP8266 sur le LAN avec <lan_ip>:1883 en dur ; topic retenu bureau/fan/speed/set"
