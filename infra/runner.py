@@ -383,7 +383,7 @@ def watch(interval: float = 3.0, once: bool = False, dry: bool = False) -> None:
     while True:
         rec = process_one(dry=dry)
         if rec:
-            print(f"run {rec['project']} : {'ok' if rec.get('ok') else 'échec'}", file=sys.stderr)
+            print(f"run {rec['project']} : {rec.get('status') or ('ok' if rec.get('ok') else 'échec')}", file=sys.stderr)
         if once:
             return
         if rec is None:
