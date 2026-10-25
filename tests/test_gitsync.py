@@ -23,7 +23,7 @@ def test_commit_push_only_when_changed(env):
     config.set_project_fields("catacombes", source="llm", container="web", port=8420)
     out = gitsync.commit_push("run catacombes : ok — constats")
     assert out["ok"] and out["committed"] and out["pushed"]
-    log = subprocess.run(["git", "-C", str(bare), "log", "-1", "--format=%an|%s"], check=False, capture_output=True, text=True).stdout.strip()
+    log = subprocess.run(["git", "-C", str(bare), "log", "-1", "--format=%an|%s", "main"], check=False, capture_output=True, text=True).stdout.strip()
     assert log == "infra (pi)|run catacombes : ok — constats"
 
 
