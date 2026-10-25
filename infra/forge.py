@@ -49,7 +49,7 @@ def episode(rec: dict, stream_json: str, *, episode_id: str):
     return Episode(id=episode_id, skills=[SkillRef(id=n, text=t) for n, t in _skill_texts(rec.get("skills") or [])],
                    trace=Trace(format="claude-stream-json", events=events),
                    agent_report=AgentReport(status=rec.get("status"), needs_human=rec.get("needs_human") or None, summary=rec.get("report") or None),
-                   meta={"project": rec.get("project"), "model": rec.get("model"), "cost_usd": rec.get("cost_usd"), "num_turns": rec.get("num_turns")})
+                   meta={k: rec.get(k) for k in ("project", "model", "cost_usd", "num_turns")})
 
 
 def judge(rec: dict, stream_json: str, *, episode_id: str, mode: str | None = None) -> dict | None:
