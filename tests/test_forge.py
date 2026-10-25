@@ -13,7 +13,8 @@ OK = "2026-10-25T175343.887806+0000-naturopathe-website"
 
 
 def _runs(env):
-    d = paths.runs_dir(); d.mkdir(parents=True, exist_ok=True)
+    d = paths.runs_dir()
+    d.mkdir(parents=True, exist_ok=True)
     for f in FIX.iterdir():
         shutil.copy(f, d / f.name)
     return d
@@ -51,7 +52,8 @@ def test_replay_writes_verdict_and_custom_skill_wins(env, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setattr(forge.secrets, "infra_env", lambda: {})
     custom = paths.config_dir() / "skills" / "expose" / "public" / "SKILL.md"
-    custom.parent.mkdir(parents=True); custom.write_text("---\nname: expose/public\n---\n## But\ncustom\n")
+    custom.parent.mkdir(parents=True)
+    custom.write_text("---\nname: expose/public\n---\n## But\ncustom\n")
     rec = json.loads((d / f"{BLOCKED}.json").read_text())
     ep = forge.episode(rec, "", episode_id=BLOCKED)
     assert next(s.text for s in ep.skills if s.id == "expose/public") == custom.read_text()
@@ -60,6 +62,6 @@ def test_replay_writes_verdict_and_custom_skill_wins(env, monkeypatch):
 
 
 def test_answer_requires_pending_question(env):
-    d = _runs(env)
+    _runs(env)
     with pytest.raises(ValueError):
         forge.answer(f"{OK}.json", "peu importe")

@@ -29,7 +29,8 @@ forge_app = typer.Typer(no_args_is_help=True, help="skillforge : juge des skills
 def forge_mode(mode: str = typer.Argument(..., help="off | shadow | ask"), budget_usd: float | None = None):
     """Règle host.yaml → forge.mode (shadow = verdict écrit dans chaque run, rien affiché ; ask = questions dans le front)."""
     from . import gitsync
-    typer.echo(json.dumps(config.set_forge(mode=mode, budget_usd=budget_usd).model_dump() | {"git": gitsync.commit_push(f"cli : forge {mode}")}, ensure_ascii=False))
+    f = config.set_forge(mode=mode, budget_usd=budget_usd).model_dump()
+    typer.echo(json.dumps(f | {"git": gitsync.commit_push(f"cli : forge {mode}")}, ensure_ascii=False))
 
 
 @forge_app.command("replay")
@@ -43,7 +44,8 @@ def forge_replay(file: str = typer.Argument(None, help="runs/<fichier>.json ; sa
 
 
 @forge_app.command("answer")
-def forge_answer(file: str, answer: str, apply: bool = typer.Option(False, help="si la réponse est générale : l'ajouter à la skill custom <config>/skills/…")):
+def forge_answer(file: str, answer: str,
+                 apply: bool = typer.Option(False, help="si la réponse est générale : l'ajouter à la skill custom <config>/skills/…")):
     """Réponse de l'auteur à la question skillforge d'un run (historique de la skill, portée, patch)."""
     from . import gitsync
     r = forge.answer(file, answer, apply=apply)

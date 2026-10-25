@@ -30,10 +30,9 @@ def _env_key() -> bool:
 
 def _skill_texts(names: list[str]) -> list[tuple[str, str]]:
     out = []
-    for base in (paths.config_dir() / "skills", paths.tool_dir() / "skills"):
-        pass
     for n in names:
-        p = next((b / n / "SKILL.md" for b in (paths.config_dir() / "skills", paths.tool_dir() / "skills") if (b / n / "SKILL.md").exists()), None)
+        bases = (paths.config_dir() / "skills", paths.tool_dir() / "skills")  # custom d'abord, puis l'outil
+        p = next((b / n / "SKILL.md" for b in bases if (b / n / "SKILL.md").exists()), None)
         out.append((n, p.read_text() if p else f"(skill {n} introuvable)"))
     return out
 
@@ -63,7 +62,8 @@ def judge(rec: dict, stream_json: str, *, episode_id: str, mode: str | None = No
         if not _env_key():
             return {"decision": "indisponible", "errors": ["OPENROUTER_API_KEY absent de secrets/infra.env"], "episode_id": episode_id}
         from skillforge import api
-        v = api.improve(episode(rec, stream_json, episode_id=episode_id), store=store(), draft_with_llm=(mode == "ask" and f.draft_with_llm), tag=episode_id)
+        ep = episode(rec, stream_json, episode_id=episode_id)
+        v = api.improve(ep, store=store(), draft_with_llm=(mode == "ask" and f.draft_with_llm), tag=episode_id)
         return v.model_dump(mode="json")
     except Exception as e:  # jamais bloquant pour infra
         return {"decision": "indisponible", "errors": [f"{type(e).__name__}: {e}"[:300]], "episode_id": episode_id}
