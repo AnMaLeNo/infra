@@ -46,9 +46,19 @@ class Target:
     def domain(self) -> str:
         return config.domain_of(self.name, self.project)
 
-    def _fqdn(self, zone: str) -> str:
-        base = f"{self.domain}.{zone}"
+    def _fqdn(self, zone: str, domain: str | None = None) -> str:
+        base = f"{domain or self.domain}.{zone}"
         return base if self.pr is None else f"pr-{self.pr}.{base}"
+
+    def routes(self) -> list[tuple[str, str, str, int | None]]:
+        """(suffixe du routeur/service Traefik, domaine, expose, port interne) : l'entrée principale puis `entries:`
+        (les previews n'ont que l'entrée principale)."""
+        main_port = 80 if self.project.service == "static" else self.project.port
+        out = [("", self.domain, self.expose, main_port)]
+        if self.pr is None:
+            for label, exp in self.project.entries.items():
+                out.append((f"-{label}", label, exp, self.project.entry_ports.get(label)))
+        return out
 
     @property
     def expose(self) -> str:
@@ -69,6 +79,12 @@ class Target:
             out["private"] = f"https://{self.private_fqdn}"
         if self.expose == "public":
             out["public"] = f"https://{self.public_fqdn}"
+        for suffix, domain, exp, _ in self.routes()[1:]:
+            label = suffix[1:]
+            if exp in ("private", "public"):
+                out[f"{label} (private)"] = f"https://{self._fqdn(self.host.private_zone, domain)}"
+            if exp == "public":
+                out[f"{label} (public)"] = f"https://{self._fqdn(self.host.public_zone, domain)}"
         return out
 
     @property
@@ -93,37 +109,39 @@ def load_compose(t: Target) -> dict:
 
 
 def traefik_labels(t: Target) -> list[str]:
-    if t.expose == "none":
+    routes = [r for r in t.routes() if r[2] != "none"]
+    if not routes:
         return []
-    rn = t.compose_project
-    labels = [
-        "traefik.enable=true",
-        "traefik.docker.network=traefik-net",
-        f"traefik.http.routers.{rn}-private.rule=Host(`{t.private_fqdn}`)",
-        f"traefik.http.routers.{rn}-private.entrypoints=tailnet",
-        f"traefik.http.routers.{rn}-private.tls=true",
-        f"traefik.http.routers.{rn}-private.tls.certresolver=cf",
-        f"traefik.http.routers.{rn}-private.service={rn}",
-    ]
-    if t.expose == "public":
-        if t.host.public_ingress == "cloudflare-tunnel":
-            labels += [
-                f"traefik.http.routers.{rn}-public.rule=Host(`{t.public_fqdn}`)",
-                f"traefik.http.routers.{rn}-public.entrypoints=tunnel",
-                f"traefik.http.routers.{rn}-public.service={rn}",
-            ]
-        else:
-            labels += [
-                f"traefik.http.routers.{rn}-public.rule=Host(`{t.public_fqdn}`)",
-                f"traefik.http.routers.{rn}-public.entrypoints=websecure",
-                f"traefik.http.routers.{rn}-public.tls=true",
-                f"traefik.http.routers.{rn}-public.tls.certresolver=cf",
-                f"traefik.http.routers.{rn}-public.service={rn}",
-            ]
-    port = 80 if t.project.service == "static" else t.project.port
-    if port is None:
-        raise ValueError(f"{t.name}: `port` manquant dans le registre (port d'écoute interne du container)")
-    labels.append(f"traefik.http.services.{rn}.loadbalancer.server.port={port}")
+    labels = ["traefik.enable=true", "traefik.docker.network=traefik-net"]
+    for suffix, domain, exp, port in routes:
+        rn = t.compose_project + suffix
+        labels += [
+            f"traefik.http.routers.{rn}-private.rule=Host(`{t._fqdn(t.host.private_zone, domain)}`)",
+            f"traefik.http.routers.{rn}-private.entrypoints=tailnet",
+            f"traefik.http.routers.{rn}-private.tls=true",
+            f"traefik.http.routers.{rn}-private.tls.certresolver=cf",
+            f"traefik.http.routers.{rn}-private.service={rn}",
+        ]
+        if exp == "public":
+            public_fqdn = t._fqdn(t.host.public_zone, domain)
+            if t.host.public_ingress == "cloudflare-tunnel":
+                labels += [
+                    f"traefik.http.routers.{rn}-public.rule=Host(`{public_fqdn}`)",
+                    f"traefik.http.routers.{rn}-public.entrypoints=tunnel",
+                    f"traefik.http.routers.{rn}-public.service={rn}",
+                ]
+            else:
+                labels += [
+                    f"traefik.http.routers.{rn}-public.rule=Host(`{public_fqdn}`)",
+                    f"traefik.http.routers.{rn}-public.entrypoints=websecure",
+                    f"traefik.http.routers.{rn}-public.tls=true",
+                    f"traefik.http.routers.{rn}-public.tls.certresolver=cf",
+                    f"traefik.http.routers.{rn}-public.service={rn}",
+                ]
+        if port is None:
+            what = "`port`" if not suffix else f"`entry_ports.{suffix[1:]}`"
+            raise ValueError(f"{t.name}: {what} manquant dans le registre (port d'écoute interne du container)")
+        labels.append(f"traefik.http.services.{rn}.loadbalancer.server.port={port}")
     return labels
 
 
@@ -140,7 +158,8 @@ def build_override(t: Target, compose: dict) -> dict:
     if not services:
         raise ValueError(f"{t.name}: aucun service dans {t.compose_file}")
     container = "web" if t.project.service == "static" else t.project.container
-    if t.expose != "none":
+    routed = t.expose != "none" or any(r[2] != "none" for r in t.routes()[1:])
+    if routed:
         if container is None:
             if len(services) == 1:
                 container = next(iter(services))
@@ -162,7 +181,7 @@ def build_override(t: Target, compose: dict) -> dict:
         hpath = paths.data_dir() / t.compose_project / svc / cpath.strip("/").replace("/", "_")
         ov["services"][svc].setdefault("volumes", []).append(f"{hpath}:{cpath}")
 
-    if t.expose != "none":
+    if routed:
         s = ov["services"][container]
         s["labels"] = traefik_labels(t)
         s["networks"] = _with_traefik_net(services[container].get("networks"))

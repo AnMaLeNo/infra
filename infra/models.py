@@ -56,7 +56,7 @@ class Host(BaseModel):
 
 # Champs du *comment*, déterminés et écrits par le LLM pendant le run (registry_set), jamais saisis
 # par l'utilisateur ; ils n'entrent pas dans le hash « modifié depuis le dernier run ».
-LLM_DECIDED = ("container", "port", "compose_file", "build", "static_dir", "consumers")
+LLM_DECIDED = ("container", "port", "compose_file", "build", "static_dir", "consumers", "entry_ports", "pr_proposed")
 
 
 class Project(BaseModel):
@@ -78,8 +78,25 @@ class Project(BaseModel):
     static_dir: str = "."              # (LLM) service static : dossier à servir
     # (LLM) service compose → variables d'env vers les `uses`, ex. {"api": {"MQTT_HOST": "mqtt", "MQTT_PORT": "1883"}}
     consumers: dict[str, dict[str, str]] = Field(default_factory=dict)
+    # Points d'entrée supplémentaires du même `container` : label → expose (none|private|public), ex. {"naturopathe-dashboard": "public"}
+    # → hostname <label>.<zone>, port constaté par le LLM dans `entry_ports`
+    entries: dict[str, str] = Field(default_factory=dict)
+    entry_ports: dict[str, int] = Field(default_factory=dict)   # (LLM) label → port interne
+    # (LLM) PR ouverte sur le repo du projet pour le dockeriser (il n'avait ni Dockerfile ni compose) ; `ref` pointe sur sa
+    # branche tant qu'elle n'est pas mergée, puis le run suivant repasse `ref: main` et efface ce champ
+    pr_proposed: str | None = None
     legacy: str | None = None
     notes: str = ""
+
+    @field_validator("entries")
+    @classmethod
+    def _entries(cls, v):
+        for label, exp in v.items():
+            if "." in label or not NAME_RE.match(label):
+                raise ValueError(f"entries: `{label}` doit être un seul label [a-z0-9-]")
+            if exp not in ("none", "private", "public"):
+                raise ValueError(f"entries.{label}: expose doit être none|private|public (reçu {exp!r})")
+        return v
 
     @field_validator("domain")
     @classmethod

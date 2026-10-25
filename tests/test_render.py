@@ -101,3 +101,42 @@ def test_changed_since_last_run_and_queue(env):
     rec = runner.process_one(dry=True)                      # dry : construit le prompt, ne lance pas claude
     assert rec["project"] == "catacombes" and rec["dry"] and runner.queued() == [] and runner.running() is None
     assert runner.process_one(dry=True) is None
+
+
+def test_entries_add_routers_and_urls(env):
+    h = config.host()
+    prj = config.set_project_fields("catacombes", source="test", entries={"catacombes-admin": "public", "catacombes-ops": "private"},
+                                    entry_ports={"catacombes-admin": 8788, "catacombes-ops": 9000})
+    t = Target("catacombes", prj, h)
+    labels = traefik_labels(t)
+    assert "traefik.http.routers.catacombes-catacombes-admin-public.rule=Host(`catacombes-admin.antoine42.com`)" in labels
+    assert "traefik.http.routers.catacombes-catacombes-admin-public.service=catacombes-catacombes-admin" in labels
+    assert "traefik.http.services.catacombes-catacombes-admin.loadbalancer.server.port=8788" in labels
+    assert "traefik.http.routers.catacombes-catacombes-ops-private.rule=Host(`catacombes-ops.pi.antoine42.com`)" in labels
+    assert not any("catacombes-ops-public" in lab for lab in labels)
+    assert "traefik.http.services.catacombes.loadbalancer.server.port=" in " ".join(labels)
+    assert t.urls["catacombes-admin (public)"] == "https://catacombes-admin.antoine42.com"
+    assert t.urls["catacombes-ops (private)"] == "https://catacombes-ops.pi.antoine42.com"
+    assert "catacombes-ops (public)" not in t.urls
+    # une preview n'a que l'entrée principale
+    assert not any("catacombes-admin" in lab for lab in traefik_labels(Target("catacombes", prj, h, pr=3)))
+
+
+def test_entry_without_port_is_explicit_error(env):
+    import pytest
+    prj = config.set_project_fields("catacombes", source="test", entries={"catacombes-admin": "public"})
+    with pytest.raises(ValueError, match="entry_ports.catacombes-admin"):
+        traefik_labels(Target("catacombes", prj, config.host()))
+
+
+def test_entries_validation(env):
+    import pytest
+
+    from infra.models import Project
+    with pytest.raises(ValueError, match="un seul label"):
+        Project(repo="https://github.com/x/y", entries={"a.b": "public"})
+    with pytest.raises(ValueError, match="none\\|private\\|public"):
+        Project(repo="https://github.com/x/y", entries={"ok": "lan"})
+    p = Project(repo="https://github.com/x/y", entries={"ok": "public"}, entry_ports={"ok": 1}, pr_proposed="https://github.com/x/y/pull/1")
+    assert "entry_ports" not in p.intent() and "pr_proposed" not in p.intent() and "entries" in p.intent()
+    assert p.decided() == {"entry_ports": {"ok": 1}, "pr_proposed": "https://github.com/x/y/pull/1"}
