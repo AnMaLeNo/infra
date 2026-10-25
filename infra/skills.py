@@ -29,6 +29,15 @@ def paths_for(prj: Project | None) -> dict[str, Path | None]:
     return {rel: resolve(rel) for rel in for_project(prj)}
 
 
+def for_shared(svc) -> list[str]:
+    """Service partagé (shared.yaml) : un seul skill, qui couvre aussi l'arrêt (`enabled: false` / retiré)."""
+    return ["shared-service"]
+
+
+def paths_for_shared(svc) -> dict[str, Path | None]:
+    return {rel: resolve(rel) for rel in for_shared(svc)}
+
+
 def list_all() -> dict[str, str]:
     out: dict[str, str] = {}
     for base, origin in ((paths.tool_dir() / "skills", "tool"), (paths.config_dir() / "skills", "custom")):

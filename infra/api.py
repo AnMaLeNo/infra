@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import ValidationError
 
 from . import __version__, compose, config, editor, history, paths, runner, skills
-from .models import Llm, Project
+from .models import Llm, Project, Shared
 from .render import Target
 
 app = FastAPI(title="infra", version=__version__)
@@ -69,6 +69,57 @@ def request_run(name: str):
 def project_history(name: str):
     """Tout ce qui est arrivé à un projet : versions de sa config (runs/history) + ses runs (runs/*-<P>.json)."""
     return {"config": history.for_project(name), "runs": runner.runs_for_project(name)}
+
+
+@app.get("/api/shared")
+def shared_services():
+    """Services partagés (shared.yaml) avec leur état de run, comme /api/projects."""
+    reg = config.shared()
+    state = runner.load_state()
+    queued, running = set(runner.queued()), runner.running()
+    out = {}
+    for name, svc in reg.services.items():
+        key = config.shared_key(name)
+        st = state.get(key, {})
+        out[name] = {"entry": svc.model_dump(), "decided": svc.decided(), "users": config.users_of(name), "key": key,
+                     "changed": st.get("hash") != runner._hash(svc), "never_run": "hash" not in st,
+                     "queued": key in queued, "running": running == key,
+                     "last_ok": st.get("ok"), "last_status": st.get("status"), "last_at": st.get("at")}
+    return out
+
+
+@app.put("/api/shared/{name}")
+def put_shared(name: str, body: dict):
+    try:
+        Shared.model_validate(body)
+        svc = config.set_shared_fields(name, **body)
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(422, str(e)) from e
+    return svc.model_dump()
+
+
+@app.delete("/api/shared/{name}")
+def delete_shared(name: str):
+    try:
+        config.remove_shared(name)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    return {"ok": True}
+
+
+@app.post("/api/shared/{name}/run")
+def request_shared_run(name: str):
+    """Bouton « Lancer Claude » d'un service partagé : file du runner, clé `shared.<nom>`."""
+    key = config.shared_key(name)
+    if name not in config.shared().services and key not in runner.load_state():
+        raise HTTPException(404, "service partagé inconnu")
+    return runner.enqueue(key)
+
+
+@app.get("/api/shared/{name}/history")
+def shared_history(name: str):
+    key = config.shared_key(name)
+    return {"config": history.for_project(key), "runs": runner.runs_for_project(key)}
 
 
 @app.get("/api/runner")

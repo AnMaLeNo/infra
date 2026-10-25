@@ -24,10 +24,11 @@ from .models import Project
 ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,mcp__infra"
 
 
-def _hash(prj: Project | None) -> str:
-    if prj is None:
+def _hash(entry) -> str:
+    """Empreinte de l'intention (Project ou Shared, sans les constats du LLM) ; `absent` si retiré."""
+    if entry is None:
         return "absent"
-    return hashlib.sha256(json.dumps(prj.intent(), sort_keys=True).encode()).hexdigest()[:16]
+    return hashlib.sha256(json.dumps(entry.intent(), sort_keys=True).encode()).hexdigest()[:16]
 
 
 def build_prompt(name: str, prj: Project | None, previous: dict | None) -> str:
@@ -78,6 +79,50 @@ def build_prompt(name: str, prj: Project | None, previous: dict | None) -> str:
     return "\n".join(lines)
 
 
+def build_shared_prompt(name: str, svc, previous: dict | None) -> str:
+    """Prompt d'un run sur un service partagé (shared.yaml) : même cadre que les projets, skill `shared-service`."""
+    h = config.host()
+    sk = skills.paths_for_shared(svc)
+    missing = [rel for rel, p in sk.items() if p is None]
+    if missing:
+        raise RuntimeError(f"skills introuvables : {missing}")
+    tool = paths.tool_dir()
+    key = config.shared_key(name)
+    after = yaml.safe_dump({name: svc.model_dump(exclude_defaults=True)} if svc else {name: None}, sort_keys=False).strip()
+    before = yaml.safe_dump({name: previous} if previous else {name: None}, sort_keys=False).strip()
+    users = config.users_of(name)
+    lines = [
+        f"Tu es l'agent de déploiement de l'hôte `{h.name}` (outil `infra`). Répertoire courant : {paths.config_dir()} (repo de config).",
+        f"Contexte à lire d'abord : {tool / 'README.md'} puis {tool / 'docs/conventions.md'}.",
+        "",
+        f"Objectif : amener le SERVICE PARTAGÉ `{name}` (shared.yaml, un seul exemplaire sur l'hôte) à l'état voulu ci-dessous.",
+        "Tu as carte blanche sur le chemin ; le skill décrit le but et l'état cible, pas une procédure.",
+        "",
+        "Entrée de shared.yaml AVANT :", "```yaml", before, "```",
+        "Entrée de shared.yaml APRÈS (état voulu) :", "```yaml", after, "```",
+        f"Projets qui le consomment (`uses:`) : {', '.join(users) if users else 'aucun pour l instant'}.",
+        "",
+        "Skills à satisfaire :",
+        *[f"- {rel} → {p}" for rel, p in sk.items()],
+        "",
+        "Les choix humains (kind, listen, port, auth, data) sont fixés : tu ne les changes pas ; s'ils sont incohérents ou",
+        "incomplets (ex. `listen: [lan]` sans `lan_ip` dans host.yaml), termine `bloqué` avec la question précise.",
+        "Le *comment* (image, container, compose_file) est à toi : écris-le avec shared_set.",
+        "",
+        "Tu disposes du serveur MCP `infra` (shared_get/shared_set/shared_status, host_addresses, host_info, registry_get,",
+        "secrets_keys, stack_status…) et de Bash (docker compose, ss, git, curl, sudo limité).",
+        "",
+        "Règles : constate l'état réel d'abord (shared_status) et n'agis que sur l'écart ; n'écoute jamais sur 0.0.0.0 ;",
+        "n'affiche jamais la valeur d'un secret ; n'invente pas de valeur manquante. Termine par un résumé : fait, vérifié,",
+        "fait à la main (candidats à devenir des tools), reste à un humain.",
+        "",
+        f"Clôture obligatoire : termine par UN appel au tool `run_report(project={key!r}, status=ok|bloqué|échec, summary, needs_human)`.",
+        "`ok` seulement si l'état cible est atteint et vérifié ; `bloqué` s'il manque quelque chose à un humain (rien de cassé) ;",
+        "`échec` sinon. Sans cet appel, le run compte comme échec.",
+    ]
+    return "\n".join(lines)
+
+
 def read_report(name: str) -> dict:
     """Rapport déposé par le tool MCP `run_report` pendant le run. Absent ou pour un autre projet → statut `inconnu`."""
     p = tools.report_path()
@@ -100,10 +145,20 @@ def claude_bin() -> str:
 
 
 def run_project(name: str, prj: Project | None, previous: dict | None, dry: bool = False) -> dict:
+    return _run(name, build_prompt(name, prj, previous), skills.for_project(prj), previous,
+                prj.model_dump() if prj else None, dry)
+
+
+def run_shared(name: str, svc, previous: dict | None, dry: bool = False) -> dict:
+    """Run sur un service partagé : enregistré sous la clé `shared.<nom>` (runs, état, historique)."""
+    return _run(config.shared_key(name), build_shared_prompt(name, svc, previous), skills.for_shared(svc), previous,
+                svc.model_dump() if svc else None, dry)
+
+
+def _run(name: str, prompt: str, skill_list: list[str], previous: dict | None, after: dict | None, dry: bool) -> dict:
     started = datetime.now(UTC)
-    prompt = build_prompt(name, prj, previous)
-    rec = {"project": name, "started": started.isoformat(), "skills": list(skills.for_project(prj)),
-           "before": previous, "after": prj.model_dump() if prj else None, "prompt": prompt}
+    rec = {"project": name, "started": started.isoformat(), "skills": list(skill_list),
+           "before": previous, "after": after, "prompt": prompt}
     if dry:
         rec.update({"dry": True, "ok": True})
         return rec
@@ -232,13 +287,16 @@ def save_state(state: dict) -> None:
 def changed_since_last_run(state: dict) -> list[str]:
     """Projets dont l'entrée du registre diffère de celle du dernier run (indicateur « modifié » du front)."""
     reg = config.registry()
+    sh = config.shared().services
     out = [n for n, p in reg.projects.items() if state.get(n, {}).get("hash") != _hash(p)]
-    out += [n for n, st in state.items() if n not in reg.projects and st.get("hash") != "absent"]
+    out += [config.shared_key(n) for n, p in sh.items() if state.get(config.shared_key(n), {}).get("hash") != _hash(p)]
+    out += [n for n, st in state.items() if n not in reg.projects and n.removeprefix("shared.") not in sh
+            and st.get("hash") != "absent"]
     return out
 
 
-def mark_applied(state: dict, name: str, prj: Project | None, ok: bool, status: str | None = None) -> None:
-    state[name] = {"hash": _hash(prj), "entry": prj.model_dump() if prj else None, "ok": ok,
+def mark_applied(state: dict, name: str, entry, ok: bool, status: str | None = None) -> None:
+    state[name] = {"hash": _hash(entry), "entry": entry.model_dump() if entry else None, "ok": ok,
                    "status": status, "at": datetime.now(UTC).isoformat()}
     save_state(state)
 
@@ -250,7 +308,7 @@ def queue_dir() -> Path:
 
 
 def enqueue(name: str) -> dict:
-    """Demande un run pour un projet (idempotent : une seule demande en attente par projet)."""
+    """Demande un run pour un projet, ou un service partagé sous la clé `shared.<nom>` (idempotent : une seule demande en attente par cible)."""
     p = queue_dir() / f"{name}.json"
     if p.exists():
         return json.loads(p.read_text())
@@ -283,22 +341,33 @@ def process_one(dry: bool = False) -> dict | None:
         return None
     req = files[0]
     name = req.stem
+    shared_name = name.removeprefix("shared.") if name.startswith("shared.") else None
     state = load_state()
-    prj = config.registry().projects.get(name)
     previous = state.get(name, {}).get("entry")
+    if shared_name is not None:
+        entry = config.shared().services.get(shared_name)
+        runner_fn, skill_list = (lambda: run_shared(shared_name, entry, previous, dry=dry)), skills.for_shared(entry)
+    else:
+        entry = config.registry().projects.get(name)
+        runner_fn, skill_list = (lambda: run_project(name, entry, previous, dry=dry)), (skills.for_project(entry) if entry else [])
     _set_running(name)
     try:
-        rec = run_project(name, prj, previous, dry=dry)
+        rec = runner_fn()
     except Exception as e:  # noqa: BLE001 — un run qui plante ne doit pas tuer le service
         rec = {"project": name, "started": datetime.now(UTC).isoformat(), "ok": False,
-               "result": f"erreur du runner : {e}", "skills": skills.for_project(prj) if prj else []}
+               "result": f"erreur du runner : {e}", "skills": skill_list}
         _save(rec)
     finally:
         _set_running(None)
         req.unlink(missing_ok=True)
     if not dry:
-        # relu après le run : le LLM a pu écrire ses constats (service, container, port…) dans le registre
-        after = config.registry().projects.get(name) if prj is not None else None
+        # relu après le run : le LLM a pu écrire ses constats (service, container, port, image…)
+        if entry is None:
+            after = None
+        elif shared_name is not None:
+            after = config.shared().services.get(shared_name)
+        else:
+            after = config.registry().projects.get(name)
         mark_applied(state, name, after, rec.get("ok", False), rec.get("status"))
     return rec
 

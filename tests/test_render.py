@@ -88,9 +88,10 @@ def test_llm_decided_fields_do_not_mark_project_changed(env):
 def test_changed_since_last_run_and_queue(env):
     from infra import runner
     state = runner.load_state()
-    assert set(runner.changed_since_last_run(state)) == set(config.registry().projects)   # jamais lancés
+    assert set(runner.changed_since_last_run(state)) == set(config.registry().projects) | {"shared.mqtt"}   # jamais lancés
     for n, prj in config.registry().projects.items():
         runner.mark_applied(state, n, prj, ok=True)
+    runner.mark_applied(state, "shared.mqtt", config.shared_service("mqtt"), ok=True)
     assert runner.changed_since_last_run(runner.load_state()) == []
     config.set_project_fields("catacombes", domain="cata")  # une intention ; `port` seul ne compterait pas (LLM_DECIDED)
     assert runner.changed_since_last_run(runner.load_state()) == ["catacombes"]

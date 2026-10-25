@@ -43,3 +43,13 @@ def app_dir(project: str) -> Path:
 
 def preview_dir(project: str, pr: int) -> Path:
     return app_dir(project) / "previews" / f"pr-{pr}"
+
+
+def shared_dir(name: str) -> Path:
+    """Définition d'un service partagé (compose + fichiers de conf), versionnée dans le repo de config."""
+    return config_dir() / "shared" / name
+
+
+def shared_state_dir(name: str) -> Path:
+    """Données/état d'un service partagé sur l'hôte (bind mounts) — ce qu'on sauvegarde."""
+    return Path(os.environ.get("INFRA_SHARED_DIR", "/srv/shared")) / name

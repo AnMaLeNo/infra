@@ -40,6 +40,7 @@ class Host(BaseModel):
     private_zone: str
     public_ingress: Ingress = "cloudflare-tunnel"
     public_ip: str | None = None
+    lan_ip: str | None = None          # IP LAN de l'hôte (clients sans Tailscale : ESP, autres machines) ; requis par `listen: [lan]`
     cloudflare: Cloudflare = Field(default_factory=Cloudflare)
     llm: Llm = Field(default_factory=Llm)
     stacks: list[str] = Field(default_factory=lambda: ["traefik", "cloudflared", "ui"])
@@ -55,7 +56,7 @@ class Host(BaseModel):
 
 # Champs du *comment*, déterminés et écrits par le LLM pendant le run (registry_set), jamais saisis
 # par l'utilisateur ; ils n'entrent pas dans le hash « modifié depuis le dernier run ».
-LLM_DECIDED = ("container", "port", "compose_file", "build", "static_dir")
+LLM_DECIDED = ("container", "port", "compose_file", "build", "static_dir", "consumers")
 
 
 class Project(BaseModel):
@@ -68,13 +69,15 @@ class Project(BaseModel):
     container: str | None = None       # (LLM) service compose qui reçoit le trafic
     port: int | None = None            # (LLM) port d'écoute interne
     previews: str = "none"             # none|private|public
-    needs: list[str] = Field(default_factory=list)
+    uses: list[str] = Field(default_factory=list)           # services partagés consommés (shared.yaml)
     env: bool = False                  # secrets/projects/<P>.env
     expose_ports: list[str] = Field(default_factory=list)   # "1883/tcp" → lié à tailscale_ip
     data: list[str] = Field(default_factory=list)           # "<svc>:<chemin container>" → /srv/data/<P>/<svc>/...
     compose_file: str = "docker-compose.yml"   # (LLM)
     build: str | None = None           # (LLM) service static : commande de build
     static_dir: str = "."              # (LLM) service static : dossier à servir
+    # (LLM) service compose → variables d'env vers les `uses`, ex. {"api": {"MQTT_HOST": "mqtt", "MQTT_PORT": "1883"}}
+    consumers: dict[str, dict[str, str]] = Field(default_factory=dict)
     legacy: str | None = None
     notes: str = ""
 
@@ -93,6 +96,49 @@ class Project(BaseModel):
         """Les constats écrits par le LLM (valeurs non par défaut seulement)."""
         d = self.model_dump(exclude_defaults=True)
         return {k: d[k] for k in LLM_DECIDED if k in d}
+
+
+Listen = Literal["lan", "tailnet"]
+SHARED_LLM_DECIDED = ("image", "container", "compose_file")
+
+
+class Shared(BaseModel):
+    """Service partagé entre projets (shared.yaml) : broker MQTT, base de données… Un seul exemplaire par hôte,
+    joignable par son nom sur traefik-net ; l'intention (kind, listen, port, auth) est humaine, le reste est constaté."""
+    kind: str                          # ce que c'est : mqtt-broker, postgres… (libre, sert au LLM et à l'humain)
+    enabled: bool = True
+    listen: list[Listen] = Field(default_factory=lambda: ["tailnet"])   # IPs d'écoute sur l'hôte ; jamais 0.0.0.0
+    port: int | None = None            # port publié sur ces IPs ; None = joignable seulement par les conteneurs (traefik-net)
+    auth: str = "anonymous"            # anonymous | users (identifiants dans secrets/shared/<nom>.env)
+    data: bool = True                  # données persistantes sous /srv/shared/<nom>/data
+    image: str | None = None           # (LLM) image:tag retenue
+    container: str | None = None       # (LLM) nom du conteneur
+    compose_file: str = "docker-compose.yml"   # (LLM) dans <config>/shared/<nom>/
+    notes: str = ""
+
+    @field_validator("listen")
+    @classmethod
+    def _unique(cls, v):
+        return list(dict.fromkeys(v))
+
+    def intent(self) -> dict:
+        return self.model_dump(exclude=set(SHARED_LLM_DECIDED))
+
+    def decided(self) -> dict:
+        d = self.model_dump(exclude_defaults=True)
+        return {k: d[k] for k in SHARED_LLM_DECIDED if k in d}
+
+
+class SharedRegistry(BaseModel):
+    services: dict[str, Shared] = Field(default_factory=dict)
+
+    @field_validator("services")
+    @classmethod
+    def _names(cls, v):
+        bad = [n for n in v if not NAME_RE.match(n)]
+        if bad:
+            raise ValueError(f"noms de service partagé invalides : {bad}")
+        return v
 
 
 class Registry(BaseModel):

@@ -127,6 +127,14 @@ def traefik_labels(t: Target) -> list[str]:
     return labels
 
 
+def _with_traefik_net(orig_nets):
+    if isinstance(orig_nets, dict):
+        return {**orig_nets, "traefik-net": None}
+    if isinstance(orig_nets, list):
+        return [*orig_nets, "traefik-net"] if "traefik-net" not in orig_nets else orig_nets
+    return ["default", "traefik-net"]
+
+
 def build_override(t: Target, compose: dict) -> dict:
     services = compose.get("services") or {}
     if not services:
@@ -157,14 +165,25 @@ def build_override(t: Target, compose: dict) -> dict:
     if t.expose != "none":
         s = ov["services"][container]
         s["labels"] = traefik_labels(t)
-        orig_nets = services[container].get("networks")
-        if isinstance(orig_nets, dict):
-            nets = {**orig_nets, "traefik-net": None}
-        elif isinstance(orig_nets, list):
-            nets = [*orig_nets, "traefik-net"]
-        else:
-            nets = ["default", "traefik-net"]
-        s["networks"] = nets
+        s["networks"] = _with_traefik_net(services[container].get("networks"))
+        ov["networks"] = {"traefik-net": {"external": True}}
+
+    if t.project.uses:
+        declared = config.shared().services
+        unknown = [u for u in t.project.uses if u not in declared]
+        if unknown:
+            raise ValueError(f"{t.name}: `uses` référence des services partagés non déclarés dans shared.yaml : {unknown}. "
+                             "Ne les crée pas dans ce projet : l'utilisateur doit les déclarer (front → Services partagés).")
+        if not t.project.consumers:
+            raise ValueError(f"{t.name}: `uses: {t.project.uses}` mais `consumers` est vide : lis le code du projet et écris via "
+                             "registry_set quel(s) service(s) compose consomme(nt) le service partagé et avec quelles variables "
+                             "d'env, ex. {\"consumers\": {\"api\": {\"MQTT_HOST\": \"mqtt\", \"MQTT_PORT\": \"1883\"}}}.")
+    for svc, env in t.project.consumers.items():
+        if svc not in services:
+            raise ValueError(f"{t.name}: consumers `{svc}` absent du compose ; services : {sorted(services)}")
+        s = ov["services"][svc]
+        s["environment"] = {**s.get("environment", {}), **env}
+        s["networks"] = _with_traefik_net(services[svc].get("networks"))
         ov["networks"] = {"traefik-net": {"external": True}}
 
     for spec in t.project.expose_ports:

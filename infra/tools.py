@@ -3,6 +3,7 @@ et lève une erreur explicite quand elle ne s'applique pas (le LLM fait alors au
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -113,6 +114,76 @@ def dns_list() -> list[dict]:
 def stack_status() -> dict:
     """État des stacks d'infra (traefik, cloudflared, ui, …)."""
     return {n: stack.status(n) for n in stack.all_names()}
+
+
+def host_addresses() -> dict:
+    """Adresses de l'hôte pour décider où un service écoute : IP Tailscale, IP LAN déclarée (host.yaml: lan_ip) et détectée (route par défaut), passerelle traefik-net. Un service partagé n'écoute jamais sur 0.0.0.0 : il lie explicitement ces IPs."""
+    h = config.host()
+    detected = None
+    try:
+        out = subprocess.run(["ip", "-4", "route", "get", "1.1.1.1"], capture_output=True, text=True, check=False).stdout.split()
+        detected = out[out.index("src") + 1] if "src" in out else None
+    except (OSError, ValueError):
+        pass
+    return {"tailscale_ip": h.tailscale_ip, "lan_ip": h.lan_ip, "lan_ip_detected": detected,
+            "traefik_net_gateway": stack.network_gateway(),
+            "warning": None if not h.lan_ip or h.lan_ip == detected else
+            f"host.yaml lan_ip={h.lan_ip} mais l'IP LAN détectée est {detected} : signale-le, ne corrige pas tout seul"}
+
+
+def shared_get(name: str | None = None) -> dict:
+    """Lit shared.yaml : un service partagé (avec `users` = projets qui le déclarent dans `uses:`, calculé) ou tous. Un service partagé n'existe qu'en un exemplaire par hôte ; s'il n'est pas déclaré ici, il ne doit pas être créé (ni dans un projet)."""
+    reg = config.shared()
+    names = [name] if name else list(reg.services)
+    return {n: config.shared_service(n).model_dump() | {"users": config.users_of(n), "dir": str(paths.shared_dir(n)),
+                                                         "state": str(paths.shared_state_dir(n))} for n in names}
+
+
+def shared_set(name: str, fields: dict) -> dict:
+    """Consigne tes constats sur un service partagé déjà déclaré (`image`, `container`, `compose_file`, `notes`). Les choix humains (kind, listen, port, auth, data) ne se changent pas ici : termine `bloqué` avec la question. Valeur null = supprimer."""
+    config.shared_service(name)
+    human = {"kind", "listen", "port", "auth", "data", "enabled"}
+    bad = human & set(fields)
+    if bad:
+        raise ValueError(f"{sorted(bad)} sont des choix humains : pas via shared_set (demande-les dans needs_human)")
+    return {name: config.set_shared_fields(name, "llm", **fields).model_dump(exclude_defaults=True)}
+
+
+def shared_status(name: str) -> dict:
+    """État réel d'un service partagé : conteneurs du projet compose `shared-<nom>`, sockets réellement écoutés sur le port déclaré (ss), alias `<nom>` sur traefik-net, clients TCP connectés, projets consommateurs attendus."""
+    svc = config.shared_service(name)
+    proj = f"shared-{name}"
+    ps = subprocess.run(["docker", "compose", "-p", proj, "ps", "-a", "--format", "json"], capture_output=True, text=True, check=False)
+    containers = []
+    for line in ps.stdout.splitlines():
+        try:
+            c = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        containers.append({"name": c.get("Name"), "service": c.get("Service"), "state": c.get("State"),
+                           "health": c.get("Health"), "image": c.get("Image"), "ports": c.get("Publishers") or []})
+    aliases = []
+    for c in containers:
+        ins = subprocess.run(["docker", "inspect", c["name"], "--format", "{{json .NetworkSettings.Networks}}"],
+                             capture_output=True, text=True, check=False)
+        try:
+            nets = json.loads(ins.stdout or "{}")
+        except json.JSONDecodeError:
+            nets = {}
+        aliases += (nets.get(stack.NETWORK) or {}).get("Aliases") or []
+    listening, clients = [], None
+    if svc.port:
+        ss = subprocess.run(["ss", "-Hltn", f"( sport = :{svc.port} )"], capture_output=True, text=True, check=False)
+        listening = [line.split()[3] for line in ss.stdout.splitlines() if len(line.split()) > 3]
+        est = subprocess.run(["ss", "-Htn", "state", "established", f"( sport = :{svc.port} )"], capture_output=True, text=True, check=False)
+        clients = len(est.stdout.splitlines())
+    h = config.host()
+    wanted = [{"lan": h.lan_ip, "tailnet": h.tailscale_ip}.get(x) for x in svc.listen]
+    return {"wanted": svc.model_dump(exclude_defaults=True), "users": config.users_of(name), "containers": containers,
+            "alias_ok": name in aliases, "listening": listening,
+            "listen_wanted": [f"{ip}:{svc.port}" for ip in wanted if ip] if svc.port else [],
+            "on_all_interfaces": any(a.startswith(("0.0.0.0:", "*:", "[::]:")) for a in listening),
+            "tcp_clients": clients, "paths": {"dir": str(paths.shared_dir(name)), "state": str(paths.shared_state_dir(name))}}
 
 
 def skills_list() -> dict:

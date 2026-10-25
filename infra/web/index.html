@@ -55,6 +55,39 @@
   </aside>
 </main>
 
+<section class="panel">
+  <div class="row"><h2 style="margin:0">Services partagés</h2><span class="muted" style="flex:1; margin-left:12px">un seul exemplaire par hôte (broker MQTT, base…) ; les projets le consomment via <code>uses:</code></span><button onclick="openSharedEditor()">+ Déclarer un service</button></div>
+  <table><thead><tr><th></th><th>Nom</th><th>Type</th><th>Écoute</th><th>Auth</th><th>Consommé par</th><th>Dernier run</th><th></th><th></th><th></th></tr></thead>
+    <tbody id="shared"></tbody></table>
+</section>
+
+<dialog id="sheditor">
+  <form method="dialog" onsubmit="return saveShared(event)">
+    <h3 id="shtitle" style="margin-top:0">Service partagé</h3>
+    <label>Nom <span class="muted">(a-z0-9-, = alias DNS sur traefik-net)</span></label><input id="s_name" required pattern="[a-z0-9][a-z0-9\-]*" placeholder="mqtt">
+    <label>Type <span class="muted">(ce que c'est, pas comment)</span></label><input id="s_kind" required placeholder="mqtt-broker, postgres…">
+    <div class="row">
+      <div><label>Écoute sur l'hôte <span class="muted">(jamais 0.0.0.0)</span></label><div style="display:flex; gap:16px; padding:8px 0"><label style="display:flex; gap:6px; align-items:center"><input type="checkbox" id="s_lan"> LAN <span class="muted">(clients sans Tailscale : ESP…)</span></label><label style="display:flex; gap:6px; align-items:center"><input type="checkbox" id="s_tailnet" checked> tailnet</label></div></div>
+      <div><label>Port publié <span class="muted">(vide = conteneurs seulement)</span></label><input id="s_port" type="number" min="1" max="65535" placeholder="1883"></div>
+    </div>
+    <div class="row">
+      <div><label>Auth</label><select id="s_auth"><option value="anonymous">anonymous</option><option value="users">users — secrets/shared/&lt;nom&gt;.env</option></select></div>
+      <div><label>Données persistantes</label><select id="s_data"><option value="true">oui — /srv/shared/&lt;nom&gt;/data</option><option value="false">non</option></select></div>
+      <div><label>Activé</label><select id="s_enabled"><option value="true">oui</option><option value="false">non</option></select></div>
+    </div>
+    <p class="help" id="sh_decided"></p>
+    <label>Notes <span class="muted">(clients hors Docker, topics critiques, contraintes)</span></label><textarea id="s_notes" rows="3"></textarea>
+    <p class="help">Ces choix sont les tiens (les clients externes en dépendent). Le <i>comment</i> (image, conteneur, compose dans <code>shared/&lt;nom&gt;/</code>) est écrit par Claude au run.</p>
+    <div class="row" style="margin-top:12px">
+      <button type="button" class="danger" id="sh_delete" onclick="deleteShared()">Supprimer</button>
+      <span></span>
+      <button type="button" onclick="sheditor.close()">Annuler</button>
+      <button class="primary" type="submit">Enregistrer</button>
+    </div>
+    <p id="sherr" style="color:var(--ko)"></p>
+  </form>
+</dialog>
+
 <dialog id="settings">
   <form method="dialog" onsubmit="return saveSettings(event)">
     <h3 style="margin-top:0">Paramètres Claude</h3>
@@ -81,7 +114,7 @@
 <dialog id="editor">
   <form method="dialog" onsubmit="return saveProject(event)">
     <h3 id="edtitle" style="margin-top:0">Projet</h3>
-    <label>Nom <span class="muted">(a-z0-9-)</span></label><input id="f_name" required pattern="[a-z0-9][a-z0-9-]*">
+    <label>Nom <span class="muted">(a-z0-9-)</span></label><input id="f_name" required pattern="[a-z0-9][a-z0-9\-]*">
     <label>Repo GitHub</label><input id="f_repo" required placeholder="https://github.com/…">
     <div class="row">
       <div><label>Service</label><select id="f_service"><option value="">Claude décide</option><option>compose</option><option>static</option></select></div>
@@ -94,7 +127,7 @@
     <p class="help" id="ed_decided"></p>
     <div class="row">
       <div><label>Branche / ref</label><input id="f_ref" value="main"></div>
-      <div><label>Needs <span class="muted">(stacks, séparées par ,)</span></label><input id="f_needs" placeholder="mosquitto"></div>
+      <div><label>Uses <span class="muted">(services partagés, séparés par ,)</span></label><input id="f_uses" placeholder="mqtt"></div>
     </div>
     <div class="row">
       <div><label>Activé</label><select id="f_enabled"><option value="true">oui</option><option value="false">non</option></select></div>
@@ -115,15 +148,15 @@
 
 <script>
 const $ = s => document.querySelector(s);
-let editing = null, PROJECTS = {}, HOST = {}, histRun = null;
+let editing = null, shEditing = null, PROJECTS = {}, SHARED = {}, HOST = {}, histRun = null;
 // Valeur JS sûre dans un attribut onclick='…' : JSON + apostrophes échappées (sinon un ' dans la
 // donnée ferme l'attribut et le bouton meurt en silence — vu avec un champ legacy « l'ancien tunnel »).
 const js = v => JSON.stringify(v).replace(/'/g, '\\u0027').replace(/</g, '\\u003c').replace(/&/g, '\\u0026');
-async function api(path, opts) { const r = await fetch(path, opts); if (!r.ok) throw new Error(await r.text()); return r.headers.get('content-type')?.includes('json') ? r.json() : r.text(); }
+async function api(path, opts) { const r = await fetch(path, opts); if (!r.ok) { const t = await r.text(); let d; try { d = JSON.parse(t).detail; } catch {} throw new Error(typeof d === 'string' ? d : t); } return r.headers.get('content-type')?.includes('json') ? r.json() : r.text(); }
 
 async function load() {
-  const [h, projects, runs] = await Promise.all([api('/api/host'), api('/api/projects'), api('/api/runs?limit=30')]);
-  PROJECTS = projects; HOST = h;
+  const [h, projects, runs, shared] = await Promise.all([api('/api/host'), api('/api/projects'), api('/api/runs?limit=30'), api('/api/shared')]);
+  PROJECTS = projects; HOST = h; SHARED = shared;
   $('#hostinfo').textContent = `${h.name} · ${h.tailscale_ip} · privé *.${h.private_zone} · public ${h.public_ingress} · v${h.version}`;
   $('#btn_settings').textContent = `⚙ Claude : ${h.llm.model} / ${h.llm.effort}`;
   $('#projects').innerHTML = Object.entries(projects).map(([name, p]) => {
@@ -141,10 +174,56 @@ async function load() {
       <td class="right"><button onclick='openEditor(${js(name)})'>Modifier</button></td>
       <td class="right"><button onclick='openHistory(${js(name)})' title="Versions de la config + tous les runs, avec leurs logs">Historique</button></td></tr>`;
   }).join('') || '<tr><td colspan="10" class="muted">Aucun projet. Ajoute-en un.</td></tr>';
+  $('#shared').innerHTML = Object.entries(shared).map(([name, p]) => {
+    const e = p.entry, busy = p.queued || p.running;
+    const dot = busy ? 'busy' : (p.changed ? 'pending' : (p.last_ok ? 'ok' : 'ko'));
+    const title = p.running ? 'run en cours' : p.queued ? 'run demandé, en attente' : p.changed ? (p.never_run ? 'jamais lancé' : 'modifié depuis le dernier run') : (p.last_ok ? 'conforme au dernier run' : p.last_status === 'bloqué' ? 'dernier run bloqué (voir Historique)' : 'dernier run en échec');
+    const listen = e.port ? `${e.listen.join(' + ')} : ${e.port}` : 'conteneurs seulement';
+    return `<tr>
+      <td><span class="dot ${dot}" title="${title}"></span></td>
+      <td><b>${name}</b>${e.enabled ? '' : ' <span class="tag">désactivé</span>'}${e.image ? `<br><span class="muted" title="constaté par Claude">${e.image}</span>` : ''}</td>
+      <td>${e.kind}</td><td>${listen}</td><td>${e.auth}</td>
+      <td>${p.users.length ? p.users.map(u => `<code>${u}</code>`).join(' ') : '<span class="muted">personne</span>'}</td>
+      <td class="muted">${p.last_at ? new Date(p.last_at).toLocaleString('fr-FR') : '—'}</td>
+      <td class="right"><button class="${p.changed && !busy ? 'primary' : ''}" ${busy ? 'disabled' : ''} onclick='requestSharedRun(${js(name)})' title="Lance claude -p sur ce service avec le skill shared-service">${p.running ? 'En cours…' : p.queued ? 'En attente' : 'Lancer Claude'}</button></td>
+      <td class="right"><button onclick='openSharedEditor(${js(name)})'>Modifier</button></td>
+      <td class="right"><button onclick='openHistory(${js(name)}, true)'>Historique</button></td></tr>`;
+  }).join('') || '<tr><td colspan="10" class="muted">Aucun service partagé déclaré. Un projet qui en consomme un (<code>uses:</code>) restera bloqué tant qu\'il n\'est pas déclaré ici.</td></tr>';
   $('#runs').innerHTML = runs.map(r => `<tr onclick="showRun('${r.file}')" style="cursor:pointer">
       <td><span class="dot ${r.ok ? 'ok' : 'ko'}"></span>${r.project}${r.dry ? ' <span class="tag">dry</span>' : ''}${r.status && r.status !== 'ok' ? ` <span class="tag" title="statut déclaré par Claude (run_report)">${r.status}</span>` : ''}</td>
       <td class="muted">${new Date(r.started).toLocaleString('fr-FR')}</td>
       <td class="muted right">${r.cost_usd ? r.cost_usd.toFixed(2) + ' $' : ''}</td></tr>`).join('') || '<tr><td class="muted">Aucun run.</td></tr>';
+}
+async function requestSharedRun(name) { await api('/api/shared/' + name + '/run', { method: 'POST' }); load(); }
+function openSharedEditor(name) {
+  shEditing = name || null; const e = (name && SHARED[name]?.entry) || {};
+  $('#shtitle').textContent = name ? `Modifier ${name}` : 'Déclarer un service partagé';
+  $('#s_name').value = name || ''; $('#s_name').disabled = !!name; $('#s_kind').value = e.kind || '';
+  const listen = e.listen || ['tailnet']; $('#s_lan').checked = listen.includes('lan'); $('#s_tailnet').checked = listen.includes('tailnet');
+  $('#s_port').value = e.port ?? ''; $('#s_auth').value = e.auth || 'anonymous'; $('#s_data').value = String(e.data ?? true);
+  $('#s_enabled').value = String(e.enabled ?? true); $('#s_notes').value = e.notes || '';
+  const decided = (name && SHARED[name]?.decided) || {};
+  $('#sh_decided').textContent = Object.keys(decided).length
+    ? 'Constaté par Claude au dernier run : ' + Object.entries(decided).map(([k, v]) => `${k} = ${v}`).join(' · ')
+    : 'Rien encore constaté par Claude (image, conteneur… seront écrits par lui au premier run).';
+  $('#sh_delete').style.visibility = name ? 'visible' : 'hidden'; $('#sherr').textContent = '';
+  sheditor.showModal();
+}
+async function saveShared(ev) {
+  ev.preventDefault();
+  const name = $('#s_name').value.trim();
+  const listen = [...($('#s_lan').checked ? ['lan'] : []), ...($('#s_tailnet').checked ? ['tailnet'] : [])];
+  const body = { kind: $('#s_kind').value.trim(), listen, port: $('#s_port').value ? Number($('#s_port').value) : null,
+    auth: $('#s_auth').value, data: $('#s_data').value === 'true', enabled: $('#s_enabled').value === 'true', notes: $('#s_notes').value };
+  if (listen.includes('lan') && body.port && !HOST.lan_ip) { $('#sherr').textContent = "listen: lan demande `lan_ip` dans host.yaml (l'IP LAN que les clients connaissent)."; return false; }
+  try { await api('/api/shared/' + name, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); sheditor.close(); load(); }
+  catch (e) { $('#sherr').textContent = e.message; }
+  return false;
+}
+async function deleteShared() {
+  if (!shEditing || !confirm(`Retirer ${shEditing} de shared.yaml ? (puis « Lancer Claude » pour l'arrêter réellement ; les données restent)`)) return;
+  try { await api('/api/shared/' + shEditing, { method: 'DELETE' }); sheditor.close(); load(); }
+  catch (e) { $('#sherr').textContent = e.message; }
 }
 async function requestRun(name) { await api('/api/projects/' + name + '/run', { method: 'POST' }); load(); }
 async function showRun(f) { $('#rundetail').textContent = await api('/api/runs/' + f); $('#rundetail').classList.remove('muted'); }
@@ -161,9 +240,9 @@ async function saveSettings(ev) {
 
 let hist = null;
 const fmt = d => new Date(d).toLocaleString('fr-FR');
-async function openHistory(name) {
-  hist = await api('/api/projects/' + name + '/history');
-  $('#htitle').textContent = `Historique — ${name}`;
+async function openHistory(name, shared = false) {
+  hist = await api((shared ? '/api/shared/' : '/api/projects/') + name + '/history');
+  $('#htitle').textContent = `Historique — ${shared ? 'service partagé ' : ''}${name}`;
   const items = [...hist.config.map((c, i) => ({ at: c.at, kind: 'config', i })), ...hist.runs.map((r, i) => ({ at: r.started, kind: 'run', i }))]
     .sort((a, b) => b.at.localeCompare(a.at));
   $('#hitems').innerHTML = items.map(it => {
@@ -208,7 +287,7 @@ function openEditor(name) {
   $('#f_name').value = name || ''; $('#f_name').disabled = !!name;
   $('#f_repo').value = e.repo || ''; $('#f_service').value = e.service || ''; $('#f_expose').value = e.expose || 'private';
   $('#f_previews').value = e.previews || 'none'; $('#f_domain').value = e.domain || '';
-  $('#f_ref').value = e.ref || 'main'; $('#f_needs').value = (e.needs || []).join(',');
+  $('#f_ref').value = e.ref || 'main'; $('#f_uses').value = (e.uses || []).join(',');
   const decided = (name && PROJECTS[name]?.decided) || {};
   $('#ed_decided').textContent = Object.keys(decided).length
     ? 'Constaté par Claude au dernier run : ' + Object.entries(decided).map(([k, v]) => `${k} = ${v}`).join(' · ')
@@ -222,7 +301,7 @@ async function saveProject(ev) {
   const name = $('#f_name').value.trim();
   const body = { repo: $('#f_repo').value.trim(), service: $('#f_service').value || null, expose: $('#f_expose').value, previews: $('#f_previews').value,
     domain: $('#f_domain').value.trim() || null, ref: $('#f_ref').value.trim() || 'main',
-    needs: $('#f_needs').value.split(',').map(s => s.trim()).filter(Boolean), enabled: $('#f_enabled').value === 'true',
+    uses: $('#f_uses').value.split(',').map(s => s.trim()).filter(Boolean), enabled: $('#f_enabled').value === 'true',
     env: $('#f_env').value === 'true', notes: $('#f_notes').value };
   try { await api('/api/projects/' + name, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); editor.close(); load(); }
   catch (e) { $('#ederr').textContent = e.message; }

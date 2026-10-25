@@ -16,6 +16,8 @@ Tout ce qui est écrit ici est **la** façon de faire. Si un skill ou un projet 
 | `/srv/apps/<projet>/previews/pr-<N>/` | idem pour une preview | non |
 | `/srv/data/<projet>/` | données persistantes (bind mounts) — c'est ce qu'on sauvegarde | non |
 | `/srv/stack/<nom>/` | état runtime des stacks d'infra (acme.json, credentials tunnel) | non |
+| `<config>/shared/<nom>/` | définition d'un service partagé (compose + conf), écrite par l'agent, **versionnée** | oui |
+| `/srv/shared/<nom>/data` | données d'un service partagé (bind mount) — c'est ce qu'on sauvegarde | non |
 
 `/home/*` ne contient plus aucun service.
 
@@ -28,6 +30,13 @@ Tout ce qui est écrit ici est **la** façon de faire. Si un skill ou un projet 
 - Les volumes nommés sont remplacés par des bind mounts sous `/srv/data/<projet>/` quand les données doivent survivre à un `down -v`.
 - `restart: unless-stopped` partout.
 - Images : tag explicite ou build local ; jamais `latest` dans les stacks d'infra.
+
+## Services partagés
+
+- Déclarés dans `shared.yaml` (humain : `kind`, `listen`, `port`, `auth`, `data` ; agent : `image`, `container`, `compose_file`). Un seul exemplaire par hôte, projet compose `shared-<nom>`.
+- Sur `traefik-net` avec l'alias réseau `<nom>` : les projets le joignent en `<nom>:<port interne>`, jamais via `host.docker.internal` ni une IP.
+- Port publié uniquement si `port` est déclaré, et seulement sur les IPs de `listen` : `lan` → `host.yaml: lan_ip` (clients sans Tailscale), `tailnet` → `tailscale_ip`. Jamais `0.0.0.0`.
+- Un projet qui consomme un service déclare `uses: [<nom>]` ; son compose ne lance jamais sa propre copie (profils/override), et `consumers` (constat de l'agent) dit quel service compose reçoit quelles variables d'env.
 
 ## Traefik
 
