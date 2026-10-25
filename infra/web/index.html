@@ -37,6 +37,7 @@
   <h1>infra</h1>
   <span class="muted" id="hostinfo">…</span>
   <span style="flex:1"></span>
+  <span id="gitwarn" hidden style="color:var(--ko); margin-right:12px" title="La config n'a pas pu être poussée sur GitHub : elle est modifiée localement, mais pas versionnée."></span>
   <button onclick="openSettings()" id="btn_settings" title="Modèle et effort de claude -p pour tous les runs">⚙ Claude : …</button>
   <button class="primary" onclick="openEditor()">+ Ajouter un projet</button>
 </header>
@@ -194,6 +195,12 @@ async function load() {
       <td class="muted">${new Date(r.started).toLocaleString('fr-FR')}</td>
       <td class="muted right">${r.cost_usd ? r.cost_usd.toFixed(2) + ' $' : ''}</td></tr>`).join('') || '<tr><td class="muted">Aucun run.</td></tr>';
 }
+// Chaque écriture de config par l'UI est commitée + poussée par l'API (gitsync) ; un push refusé est signalé en haut de page.
+function gitNotice(res) {
+  const g = res && res.git; const w = $('#gitwarn');
+  if (!g || g.ok) { w.hidden = true; return; }
+  w.hidden = false; w.textContent = '⚠ config non poussée : ' + (g.error || 'erreur git');
+}
 async function requestSharedRun(name) { await api('/api/shared/' + name + '/run', { method: 'POST' }); load(); }
 function openSharedEditor(name) {
   shEditing = name || null; const e = (name && SHARED[name]?.entry) || {};
@@ -216,13 +223,13 @@ async function saveShared(ev) {
   const body = { kind: $('#s_kind').value.trim(), listen, port: $('#s_port').value ? Number($('#s_port').value) : null,
     auth: $('#s_auth').value, data: $('#s_data').value === 'true', enabled: $('#s_enabled').value === 'true', notes: $('#s_notes').value };
   if (listen.includes('lan') && body.port && !HOST.lan_ip) { $('#sherr').textContent = "listen: lan demande `lan_ip` dans host.yaml (l'IP LAN que les clients connaissent)."; return false; }
-  try { await api('/api/shared/' + name, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); sheditor.close(); load(); }
+  try { gitNotice(await api('/api/shared/' + name, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })); sheditor.close(); load(); }
   catch (e) { $('#sherr').textContent = e.message; }
   return false;
 }
 async function deleteShared() {
   if (!shEditing || !confirm(`Retirer ${shEditing} de shared.yaml ? (puis « Lancer Claude » pour l'arrêter réellement ; les données restent)`)) return;
-  try { await api('/api/shared/' + shEditing, { method: 'DELETE' }); sheditor.close(); load(); }
+  try { gitNotice(await api('/api/shared/' + shEditing, { method: 'DELETE' })); sheditor.close(); load(); }
   catch (e) { $('#sherr').textContent = e.message; }
 }
 async function requestRun(name) { await api('/api/projects/' + name + '/run', { method: 'POST' }); load(); }
@@ -233,7 +240,7 @@ async function openSettings() {
 }
 async function saveSettings(ev) {
   ev.preventDefault();
-  try { await api('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: $('#s_model').value.trim(), effort: $('#s_effort').value }) }); settings.close(); load(); }
+  try { gitNotice(await api('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: $('#s_model').value.trim(), effort: $('#s_effort').value }) })); settings.close(); load(); }
   catch (e) { $('#serr').textContent = e.message; }
   return false;
 }
@@ -303,13 +310,13 @@ async function saveProject(ev) {
     domain: $('#f_domain').value.trim() || null, ref: $('#f_ref').value.trim() || 'main',
     uses: $('#f_uses').value.split(',').map(s => s.trim()).filter(Boolean), enabled: $('#f_enabled').value === 'true',
     env: $('#f_env').value === 'true', notes: $('#f_notes').value };
-  try { await api('/api/projects/' + name, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); editor.close(); load(); }
+  try { gitNotice(await api('/api/projects/' + name, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })); editor.close(); load(); }
   catch (e) { $('#ederr').textContent = e.message; }
   return false;
 }
 async function deleteProject() {
   if (!editing || !confirm(`Retirer ${editing} du registre ? (puis « Lancer Claude » pour l'arrêter réellement ; les données restent)`)) return;
-  await api('/api/projects/' + editing, { method: 'DELETE' }); editor.close(); load();
+  gitNotice(await api('/api/projects/' + editing, { method: 'DELETE' })); editor.close(); load();
 }
 load(); setInterval(load, 10000);
 </script>

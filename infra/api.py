@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import ValidationError
 
-from . import __version__, compose, config, editor, history, paths, runner, skills
+from . import __version__, compose, config, editor, gitsync, history, paths, runner, skills
 from .models import Llm, Project, Shared
 from .render import Target
 
@@ -36,7 +36,8 @@ def settings():
 def put_settings(body: dict):
     try:
         Llm.model_validate(body)
-        return config.set_llm(**body).model_dump()
+        llm = config.set_llm(**body).model_dump()
+        return llm | {"git": gitsync.commit_push("ui : settings LLM")}
     except (ValidationError, ValueError) as e:
         raise HTTPException(422, str(e)) from e
 
@@ -95,7 +96,7 @@ def put_shared(name: str, body: dict):
         svc = config.set_shared_fields(name, **body)
     except (ValidationError, ValueError) as e:
         raise HTTPException(422, str(e)) from e
-    return svc.model_dump()
+    return svc.model_dump() | {"git": gitsync.commit_push(f"ui : service partagé {name} déclaré/modifié")}
 
 
 @app.delete("/api/shared/{name}")
@@ -104,7 +105,7 @@ def delete_shared(name: str):
         config.remove_shared(name)
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
-    return {"ok": True}
+    return {"ok": True, "git": gitsync.commit_push(f"ui : service partagé {name} retiré")}
 
 
 @app.post("/api/shared/{name}/run")
@@ -148,13 +149,13 @@ def put_project(name: str, body: dict):
         prj = config.set_project_fields(name, **{k: v for k, v in body.items()})
     except (ValidationError, ValueError) as e:
         raise HTTPException(422, str(e)) from e
-    return prj.model_dump()
+    return prj.model_dump() | {"git": gitsync.commit_push(f"ui : projet {name} modifié")}
 
 
 @app.delete("/api/projects/{name}")
 def delete_project(name: str):
     config.remove_project(name)
-    return {"ok": True}
+    return {"ok": True, "git": gitsync.commit_push(f"ui : projet {name} retiré du registre")}
 
 
 @app.get("/api/runs")

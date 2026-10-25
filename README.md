@@ -31,7 +31,7 @@ Dans **Historique**, un run a un bouton **Continuer cette session dans VS Code**
 
 ## La config est versionnée automatiquement
 
-Après chaque run, le runner fait `git add -A` + commit + push du repo de config (`infra/gitsync.py`) : les constats de Claude (`registry.yaml`, `shared.yaml`), les définitions qu'il écrit (`shared/<S>/`), `host.yaml`… sont dans l'historique git sans geste humain, avec le nom du run et son statut en message. Le push passe par https + `GITHUB_TOKEN` (le token doit avoir *Contents: write* sur le repo de config), même si le remote est en ssh. Un push refusé n'échoue pas le run : il est consigné dans le run (`git.error`) et visible dans l'historique.
+Après chaque run, le runner fait `git add -A` + commit + push du repo de config (`infra/gitsync.py`) : les constats de Claude (`registry.yaml`, `shared.yaml`), les définitions qu'il écrit (`shared/<S>/`), `host.yaml`… sont dans l'historique git sans geste humain, avec le nom du run et son statut en message. Le push passe par https + `GITHUB_TOKEN` (le token doit avoir *Contents: write* sur le repo de config), même si le remote est en ssh. Un push refusé n'échoue pas le run : il est consigné dans le run (`git.error`) et visible dans l'historique. Les écritures faites depuis le front (projets, services partagés, settings) et `infra set` sont commitées et poussées de la même façon (`ui : projet <P> modifié`…) ; la réponse de l'API porte le résultat `git`, et le front affiche un avertissement si le push a été refusé.
 
 ## Services partagés (`shared.yaml`)
 
