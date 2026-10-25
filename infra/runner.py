@@ -369,6 +369,11 @@ def process_one(dry: bool = False) -> dict | None:
         else:
             after = config.registry().projects.get(name)
         mark_applied(state, name, after, rec.get("ok", False), rec.get("status"))
+        # la config écrite pendant le run (constats, shared/<S>/, host.yaml…) est versionnée tout de suite
+        from . import gitsync
+        rec["git"] = gitsync.commit_push(f"run {name} : {rec.get('status') or 'erreur'} — {(rec.get('report') or '')[:72]}".rstrip(" —"))
+        if "started" in rec and rec.get("skills") is not None:
+            _save(rec)
     return rec
 
 
