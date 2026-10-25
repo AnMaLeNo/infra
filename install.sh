@@ -41,6 +41,11 @@ chmod g+s /srv/apps /srv/data /srv/stack /srv/shared "$CONFIG_DIR/runs" "$CONFIG
 chgrp infra "$CONFIG_DIR/registry.yaml" "$CONFIG_DIR/host.yaml" "$CONFIG_DIR/shared.yaml"
 chmod g+rw "$CONFIG_DIR/registry.yaml" "$CONFIG_DIR/host.yaml" "$CONFIG_DIR/shared.yaml"
 git config --system --add safe.directory '*' 2>/dev/null || true
+# le runner (ai-infra) commite et pousse la config après chaque run : dépôt partagé avec le groupe infra
+if [ -d "$CONFIG_DIR/.git" ]; then
+  chgrp -R infra "$CONFIG_DIR/.git" && chmod -R g+rwX "$CONFIG_DIR/.git" && find "$CONFIG_DIR/.git" -type d -exec chmod g+s {} +
+  git -C "$CONFIG_DIR" config core.sharedRepository group
+fi
 cat > /etc/sudoers.d/ai-infra <<'SUDO'
 Defaults:ai-infra log_input, log_output
 ai-infra ALL=(root) NOPASSWD: /usr/bin/systemctl, /usr/bin/tailscale, /usr/bin/apt-get, /usr/local/bin/infra, /usr/sbin/useradd, /usr/sbin/usermod, /usr/sbin/usermod, /usr/bin/passwd -l *, /usr/bin/tee /etc/sudoers.d/ai-*

@@ -12,10 +12,13 @@ def git_env() -> dict[str, str]:
     env = {"GIT_TERMINAL_PROMPT": "0"}
     token = secrets.infra_env().get("GITHUB_TOKEN")
     if token:
+        # les deux formes de remote (https et ssh) passent par https + token : ai-infra n'a pas de clé ssh
         env.update({
-            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_COUNT": "2",
             "GIT_CONFIG_KEY_0": f"url.https://x-access-token:{token}@github.com/.insteadOf",
             "GIT_CONFIG_VALUE_0": "https://github.com/",
+            "GIT_CONFIG_KEY_1": f"url.https://x-access-token:{token}@github.com/.insteadOf",
+            "GIT_CONFIG_VALUE_1": "git@github.com:",
             "GH_TOKEN": token,
         })
     return env
