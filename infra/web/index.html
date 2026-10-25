@@ -15,7 +15,7 @@
   table { width:100%; border-collapse:collapse } th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top }
   th { color:var(--muted); font-weight:500 }
   .tag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:12px; border:1px solid var(--line); color:var(--muted) }
-  .tag.public { color:var(--ok); border-color:var(--ok) } .tag.private { color:var(--acc); border-color:var(--acc) } .tag.none { color:var(--muted) }
+  .tag.public { color:var(--ok); border-color:var(--ok) } .tag.private { color:var(--acc); border-color:var(--acc) } .tag.none { color:var(--muted) } .tag.pr { color:var(--warn, #b8860b); border-color:var(--warn, #b8860b); text-decoration:none }
   .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; background:var(--muted) }
   .dot.ok { background:var(--ok) } .dot.ko { background:var(--ko) } .dot.pending { background:var(--warn) } .dot.busy { background:var(--acc); animation: pulse 1s infinite alternate }
   @keyframes pulse { from { opacity:.4 } to { opacity:1 } }
@@ -212,7 +212,7 @@ function openSharedEditor(name) {
   $('#s_enabled').value = String(e.enabled ?? true); $('#s_notes').value = e.notes || '';
   const decided = (name && SHARED[name]?.decided) || {};
   $('#sh_decided').textContent = Object.keys(decided).length
-    ? 'Constaté par Claude au dernier run : ' + Object.entries(decided).map(([k, v]) => `${k} = ${v}`).join(' · ')
+    ? 'Constaté par Claude au dernier run : ' + Object.entries(decided).map(([k, v]) => `${k} = ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')
     : 'Rien encore constaté par Claude (image, conteneur… seront écrits par lui au premier run).';
   $('#sh_delete').style.visibility = name ? 'visible' : 'hidden'; $('#sherr').textContent = '';
   sheditor.showModal();
@@ -299,7 +299,7 @@ function openEditor(name) {
   $('#f_ref').value = e.ref || 'main'; $('#f_uses').value = (e.uses || []).join(',');
   const decided = (name && PROJECTS[name]?.decided) || {};
   $('#ed_decided').textContent = Object.keys(decided).length
-    ? 'Constaté par Claude au dernier run : ' + Object.entries(decided).map(([k, v]) => `${k} = ${v}`).join(' · ')
+    ? 'Constaté par Claude au dernier run : ' + Object.entries(decided).map(([k, v]) => `${k} = ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')
     : 'Rien encore constaté par Claude (container, port… seront écrits par lui au premier run).';
   $('#f_enabled').value = String(e.enabled ?? true); $('#f_env').value = String(e.env ?? false); $('#f_notes').value = e.notes || '';
   $('#btn_delete').style.visibility = name ? 'visible' : 'hidden'; $('#ederr').textContent = '';
