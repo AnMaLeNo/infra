@@ -131,6 +131,7 @@ def test_entry_without_port_is_explicit_error(env):
 
 def test_entries_validation(env):
     import pytest
+
     from infra.models import Project
     with pytest.raises(ValueError, match="un seul label"):
         Project(repo="https://github.com/x/y", entries={"a.b": "public"})
