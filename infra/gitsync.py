@@ -10,7 +10,10 @@ from . import compose, config, paths, secrets
 
 
 def _git(args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(paths.config_dir()), *args], env=env, capture_output=True, text=True, check=False)
+    # safe.directory explicite : le repo de config appartient à root et l'UI tourne en ai-infra dans un conteneur
+    # (sans le /etc/gitconfig de l'hôte) → sinon « dubious ownership » et aucun commit depuis le front.
+    cfg = str(paths.config_dir())
+    return subprocess.run(["git", "-c", f"safe.directory={cfg}", "-C", cfg, *args], env=env, capture_output=True, text=True, check=False)
 
 
 def commit_push(message: str) -> dict:
