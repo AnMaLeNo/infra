@@ -1,4 +1,5 @@
-"""Stacks d'infra partagées (tool/stack/<nom>) : traefik, cloudflared, ui, mosquitto…"""
+"""Stacks d'infra de l'outil (tool/stack/<nom>, surchargeables dans <config>/stack/<nom>) : traefik, cloudflared, ui…
+Les services consommés par les projets (broker MQTT, base…) ne sont pas des stacks : voir shared.yaml."""
 from __future__ import annotations
 
 import grp
