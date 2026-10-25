@@ -143,7 +143,9 @@ def set_cmd(name: str, fields: list[str] = typer.Argument(..., help="cle=valeur 
             kv[k] = yaml.safe_load(v)
         else:
             kv[k] = v
-    _out({name: config.set_project_fields(name, **kv).model_dump(exclude_defaults=True)})
+    from . import gitsync
+    _out({name: config.set_project_fields(name, source="cli", **kv).model_dump(exclude_defaults=True),
+          "git": gitsync.commit_push(f"cli : projet {name} modifié")})
 
 
 @app.command()
@@ -227,7 +229,8 @@ def history(name: str):
 def llm_cmd(model: str | None = typer.Option(None), effort: str | None = typer.Option(None)):
     """Affiche / règle le modèle et l'effort de claude -p pour tous les runs (host.yaml → llm)."""
     if model or effort:
-        _out(config.set_llm(model=model, effort=effort).model_dump())
+        from . import gitsync
+        _out(config.set_llm(model=model, effort=effort).model_dump() | {"git": gitsync.commit_push("cli : settings LLM")})
     else:
         _out(config.host().llm.model_dump())
 

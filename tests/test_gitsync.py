@@ -46,3 +46,22 @@ def test_run_record_carries_git_result(env):
     runner.enqueue("catacombes")
     rec = runner.process_one(dry=True)          # dry : pas de claude, pas de commit
     assert "git" not in rec
+
+
+def test_ui_writes_are_committed(env):
+    from fastapi.testclient import TestClient
+
+    from infra.api import app
+    bare = _init_repo(env)
+    c = TestClient(app)
+    r = c.put("/api/projects/catacombes", json={"repo": "https://github.com/AnMaLeNo/catacombes", "expose": "public", "domain": "cata"}).json()
+    assert r["git"]["committed"] and r["git"]["pushed"]
+    r = c.put("/api/settings", json={"model": "opus", "effort": "max"}).json()
+    assert r["git"]["committed"]
+    r = c.put("/api/shared/pg", json={"kind": "postgres"}).json()
+    assert r["git"]["committed"]
+    assert c.delete("/api/shared/pg").json()["git"]["committed"]
+    assert c.delete("/api/projects/catacombes").json()["git"]["committed"]
+    log = subprocess.run(["git", "-C", str(bare), "log", "--format=%s", "main"], check=False, capture_output=True, text=True).stdout.splitlines()
+    assert log[:5] == ["ui : projet catacombes retiré du registre", "ui : service partagé pg retiré", "ui : service partagé pg déclaré/modifié",
+                       "ui : settings LLM", "ui : projet catacombes modifié"]
