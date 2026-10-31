@@ -35,7 +35,7 @@ Tout ce qui est écrit ici est **la** façon de faire. Si un skill ou un projet 
 
 - Déclarés dans `shared.yaml` (humain : `kind`, `listen`, `port`, `auth`, `data` ; agent : `image`, `container`, `compose_file`). Un seul exemplaire par hôte, projet compose `shared-<nom>`.
 - Sur `traefik-net` avec l'alias réseau `<nom>` : les projets le joignent en `<nom>:<port interne>`, jamais via `host.docker.internal` ni une IP.
-- Port publié uniquement si `port` est déclaré, et seulement sur les IPs de `listen` : `lan` → `host.yaml: lan_ip` (clients sans Tailscale), `tailnet` → `tailscale_ip`. Jamais `0.0.0.0`.
+- Port publié uniquement si `port` est déclaré, et seulement sur les IPs de `listen` : `lan` → chaque IP de `host.yaml: lan_ip` (une ou plusieurs ; clients sans Tailscale), `tailnet` → `tailscale_ip`. Jamais `0.0.0.0`.
 - Un projet qui consomme un service déclare `uses: [<nom>]` ; son compose ne lance jamais sa propre copie (profils/override), et `consumers` (constat de l'agent) dit quel service compose reçoit quelles variables d'env.
 
 ## Traefik

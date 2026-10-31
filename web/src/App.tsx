@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type Host } from './api'
 import { HistoryDialog } from './components/HistoryDialog'
+import { ObservationsDialog } from './components/ObservationsDialog'
 import { ProjectCard } from './components/ProjectCard'
 import { ProjectDialog } from './components/ProjectDialog'
 import { RunDetail } from './components/RunDetail'
@@ -17,6 +18,7 @@ type Modal =
   | { t: 'project'; name: string | null }
   | { t: 'shared'; name: string | null }
   | { t: 'history'; name: string; shared: boolean }
+  | { t: 'observations'; name: string; shared: boolean }
   | { t: 'run'; file: string }
   | { t: 'settings' }
   | null
@@ -87,7 +89,7 @@ export default function App() {
             ) : (
               <div className="cards">
                 {Object.entries(prj).map(([name, v]) => (
-                  <ProjectCard key={name} name={name} view={v} onRun={() => run(name, false)} onEdit={() => open({ t: 'project', name })} onHistory={() => open({ t: 'history', name, shared: false })} />
+                  <ProjectCard key={name} name={name} view={v} onRun={() => run(name, false)} onEdit={() => open({ t: 'project', name })} onHistory={() => open({ t: 'history', name, shared: false })} onObservations={() => open({ t: 'observations', name, shared: false })} />
                 ))}
               </div>
             )}
@@ -105,7 +107,7 @@ export default function App() {
             ) : (
               <div className="cards">
                 {Object.entries(sh).map(([name, v]) => (
-                  <SharedCard key={name} name={name} view={v} onRun={() => run(name, true)} onEdit={() => open({ t: 'shared', name })} onHistory={() => open({ t: 'history', name, shared: true })} />
+                  <SharedCard key={name} name={name} view={v} onRun={() => run(name, true)} onEdit={() => open({ t: 'shared', name })} onHistory={() => open({ t: 'history', name, shared: true })} onObservations={() => open({ t: 'observations', name, shared: true })} />
                 ))}
               </div>
             )}
@@ -126,7 +128,8 @@ export default function App() {
       </main>
 
       {modal?.t === 'project' && <ProjectDialog key={modal.name ?? '+'} name={modal.name} view={modal.name ? prj[modal.name] : undefined} sharedNames={sharedNames} onClose={close} onSaved={reloadAll} />}
-      {modal?.t === 'shared' && <SharedDialog key={modal.name ?? '+'} name={modal.name} view={modal.name ? sh[modal.name] : undefined} lanIp={host?.lan_ip ?? null} onClose={close} onSaved={reloadAll} />}
+      {modal?.t === 'shared' && <SharedDialog key={modal.name ?? '+'} name={modal.name} view={modal.name ? sh[modal.name] : undefined} lanIp={host?.lan_ip ?? []} onClose={close} onSaved={reloadAll} />}
+      {modal?.t === 'observations' && <ObservationsDialog key={modal.name} name={modal.name} shared={modal.shared} observations={(modal.shared ? sh[modal.name] : prj[modal.name])?.observations ?? []} onClose={close} onCleared={reloadAll} onOpenRun={(file) => open({ t: 'run', file })} />}
       {modal?.t === 'history' && <HistoryDialog key={modal.name} name={modal.name} shared={modal.shared} onClose={close} onOpenRun={(file) => open({ t: 'run', file })} />}
       {modal?.t === 'run' && <RunDetail key={modal.file} file={modal.file} host={host} onClose={close} />}
       {modal?.t === 'settings' && host && <SettingsDialog llm={host.llm} onClose={close} onSaved={reloadAll} />}

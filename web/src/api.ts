@@ -43,7 +43,17 @@ export interface Shared {
 
 export type RunStatus = 'ok' | 'bloqué' | 'échec' | 'inconnu' | null
 
+/** Remarque laissée par Claude pour l'humain (tool `observe`, ou `needs_human` d'un run_report), hors statut. */
+export interface Observation {
+  at: string
+  text: string
+  source: 'observe' | 'run_report'
+  status: RunStatus | null
+  run: string | null
+}
+
 export interface RunState {
+  observations: Observation[]
   changed: boolean
   never_run: boolean
   changed_fields: string[]
@@ -71,7 +81,7 @@ export interface SharedView extends RunState {
 export interface Host {
   name: string
   tailscale_ip: string
-  lan_ip: string | null
+  lan_ip: string[]
   private_zone: string
   public_zone: string
   public_ingress: string
@@ -179,11 +189,13 @@ export const api = {
   deleteProject: (name: string) => request<{ ok: boolean; git: GitResult }>('DELETE', `/api/projects/${name}`),
   runProject: (name: string) => request<unknown>('POST', `/api/projects/${name}/run`),
   projectHistory: (name: string) => request<History>('GET', `/api/projects/${name}/history`),
+  clearProjectObservations: (name: string) => request<{ ok: boolean }>('DELETE', `/api/projects/${name}/observations`),
   shared: () => request<Record<string, SharedView>>('GET', '/api/shared'),
   putShared: (name: string, s: Record<string, unknown>) => request<Shared & { git: GitResult }>('PUT', `/api/shared/${name}`, s),
   deleteShared: (name: string) => request<{ ok: boolean; git: GitResult }>('DELETE', `/api/shared/${name}`),
   runShared: (name: string) => request<unknown>('POST', `/api/shared/${name}/run`),
   sharedHistory: (name: string) => request<History>('GET', `/api/shared/${name}/history`),
+  clearSharedObservations: (name: string) => request<{ ok: boolean }>('DELETE', `/api/shared/${name}/observations`),
   runner: () => request<RunnerState>('GET', '/api/runner'),
   runs: (limit = 50) => request<RunSummary[]>('GET', `/api/runs?limit=${limit}`),
   runFull: (file: string) => request<RunFull>('GET', `/api/runs/${file}/full`),

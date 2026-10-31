@@ -3,7 +3,7 @@ name: pi                                 # nom court, aussi nom du tunnel Cloudf
 tailscale_ip: 100.72.6.43                # `tailscale ip -4` ; les entrypoints privés de Traefik écoutent ici
 public_zone: antoine42.com               # zone Cloudflare
 private_zone: pi.antoine42.com           # *.pi.antoine42.com → tailscale_ip
-lan_ip: 192.168.1.101                            # IP LAN de l'hôte si des clients sans Tailscale (ESP…) doivent joindre un service partagé (`listen: [lan]`)
+lan_ip: [192.168.1.100, 192.168.1.101]          # IP(s) LAN de l'hôte (eth0, wlan0…) si des clients sans Tailscale (ESP…) doivent joindre un service partagé (`listen: [lan]`) ; une seule valeur accepte aussi la forme `lan_ip: 192.168.1.101`
 public_ingress: cloudflare-tunnel        # cloudflare-tunnel | direct (VPS avec IP publique)
 public_ip: null                          # requis si direct
 cloudflare:

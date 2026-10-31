@@ -51,9 +51,10 @@ pub struct Host {
     pub public_ingress: String,
     #[serde(default)]
     pub public_ip: Option<String>,
-    /// IP LAN de l'hôte (clients sans Tailscale : ESP, autres machines) ; requis par `listen: [lan]`
-    #[serde(default)]
-    pub lan_ip: Option<String>,
+    /// IP(s) LAN de l'hôte (clients sans Tailscale : ESP, autres machines) ; requis par `listen: [lan]`.
+    /// Une chaîne ou une liste dans host.yaml (un hôte peut avoir eth0 et wlan0) ; toujours une liste ici.
+    #[serde(default, deserialize_with = "de_str_or_list")]
+    pub lan_ip: Vec<String>,
     #[serde(default)]
     pub cloudflare: Cloudflare,
     #[serde(default)]
@@ -71,6 +72,22 @@ fn d_ingress() -> String {
 }
 fn d_stacks() -> Vec<String> {
     vec!["traefik".into(), "cloudflared".into(), "ui".into()]
+}
+
+/// `x`, `[x, y]` ou null → liste (chaînes vides ignorées).
+fn de_str_or_list<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum V {
+        One(String),
+        Many(Vec<String>),
+        None,
+    }
+    Ok(match V::deserialize(d)? {
+        V::One(s) if !s.trim().is_empty() => vec![s.trim().to_string()],
+        V::One(_) | V::None => vec![],
+        V::Many(v) => v.into_iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+    })
 }
 
 impl Host {

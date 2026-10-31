@@ -113,3 +113,27 @@ async fn editor_route_requests_the_session_of_a_run() {
     let (st, text) = call("GET", "/api/runs/c-p.log/log", None).await;
     assert!(st == StatusCode::OK && text.as_str().unwrap().contains("from-log"));
 }
+
+#[tokio::test]
+async fn observations_in_views_and_cleared_by_delete() {
+    let _e = common::env();
+    infra::observations::add("shared.mqtt", "IP du Wi-Fi", "run_report", Some("ok"), Some("r1")).unwrap();
+    infra::observations::add("catacombes", "à nettoyer", "observe", None, None).unwrap();
+    let (st, v) = call("GET", "/api/shared", None).await;
+    assert_eq!(st, StatusCode::OK);
+    let obs = v["mqtt"]["observations"].as_array().unwrap();
+    assert_eq!(obs.len(), 1);
+    assert_eq!(obs[0]["text"], "IP du Wi-Fi");
+    assert_eq!(obs[0]["status"], "ok");
+    let (_, p) = call("GET", "/api/projects", None).await;
+    assert_eq!(p["catacombes"]["observations"][0]["source"], "observe");
+    assert_eq!(p["fan-controller"]["observations"].as_array().unwrap().len(), 0);
+    let (st, _) = call("DELETE", "/api/shared/mqtt/observations", None).await;
+    assert_eq!(st, StatusCode::OK);
+    let (_, v) = call("GET", "/api/shared", None).await;
+    assert_eq!(v["mqtt"]["observations"].as_array().unwrap().len(), 0);
+    let (_, p) = call("GET", "/api/projects", None).await;
+    assert_eq!(p["catacombes"]["observations"].as_array().unwrap().len(), 1);
+    let (_, h) = call("GET", "/api/host", None).await;
+    assert_eq!(h["lan_ip"].as_array().unwrap().len(), 2);
+}

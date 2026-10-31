@@ -126,7 +126,7 @@ pub static TOOLS: &[Tool] = &[
     },
     Tool {
         name: "host_addresses",
-        description: "Adresses de l'hôte pour décider où un service écoute : IP Tailscale, IP LAN déclarée (host.yaml: lan_ip) et détectée (route par défaut), passerelle traefik-net. Un service partagé n'écoute jamais sur 0.0.0.0 : il lie explicitement ces IPs.",
+        description: "Adresses de l'hôte pour décider où un service écoute : IP Tailscale, IP(s) LAN déclarées par l'humain (host.yaml: lan_ip, une ou plusieurs : un hôte peut avoir eth0 et wlan0), IPs réellement portées par l'hôte (host_ips) et celles déclarées mais absentes (lan_ip_missing → bloqué). Laquelle porte la route par défaut (lan_ip_default_route) n'est qu'une information. Un service partagé n'écoute jamais sur 0.0.0.0 : il lie explicitement chaque IP déclarée.",
         schema: || obj(json!({}), &[]),
         call: |_| tools::host_addresses(),
     },
@@ -153,6 +153,12 @@ pub static TOOLS: &[Tool] = &[
         description: "Skills disponibles (chemin → origine tool|custom).",
         schema: || obj(json!({}), &[]),
         call: |_| tools::skills_list(),
+    },
+    Tool {
+        name: "observe",
+        description: "Laisse une observation pour l'humain sur une cible (`project` = nom du projet, ou `shared.<S>` pour un service partagé), sans changer le statut du run. Pour ce qui est utile mais hors du périmètre d'infra : un client LAN (ESP…) qui ne répond pas, une IP déclarée qui est celle du Wi-Fi, un reste à nettoyer, un rapprochement tiré de `notes`. Affichée dans l'interface sur la carte de la cible jusqu'à ce que l'humain l'efface. Plusieurs appels possibles ; n'en fais pas un `bloqué` quand rien ne manque à infra.",
+        schema: || obj(json!({"project": {"type": "string"}, "text": {"type": "string"}}), &["project", "text"]),
+        call: |a| tools::observe(arg_str(a, "project")?, arg_str(a, "text")?),
     },
     Tool {
         name: "run_report",
