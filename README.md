@@ -77,7 +77,9 @@ skills/               1 SKILL.md par opération, écrits pour un LLM
   expose/{none,private,public}/   service/{compose,static}/   previews/   undeploy/
   bootstrap-host/   agent-account/   secrets/   migrate-legacy/
 stack/                compose des services d'infra de l'outil : traefik/, cloudflared/, ui/ (les services partagés entre projets sont dans shared.yaml)
-infra/                CLI, serveur MCP (`infra mcp`), API/UI, runner (Python)
+src/                  l'outil (Rust, un binaire) : CLI, serveur MCP (`infra mcp`), API, runner, éditeur
+web/                  front (React/Vite), compilé dans web/dist puis embarqué dans le binaire
+editor_ext/           extension VS Code qui rouvre la session Claude d'un run
 example-config/       à quoi ressemble un repo de config
 install.sh            installation de l'outil sur un hôte déjà bootstrappé
 ```
@@ -86,7 +88,7 @@ install.sh            installation de l'outil sur un hôte déjà bootstrappé
 
 ```bash
 sudo git clone --recursive git@github.com:<toi>/infra-<serveur>.git /srv/infra
-sudo /srv/infra/tool/install.sh      # dépendances, utilisateur ai-infra, CLI, runner
+sudo /srv/infra/tool/install.sh      # dépendances, utilisateur ai-infra, binaire infra (release du tag de tool/), runner
 infra bootstrap                      # Traefik, tunnel, UI… (skill bootstrap-host)
 ```
 
