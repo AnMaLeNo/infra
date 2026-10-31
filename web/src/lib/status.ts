@@ -38,7 +38,7 @@ export function statusOf(s: RunState): Status {
 
 export const LEGEND: { kind: StatusKind; label: string; text: string }[] = [
   { kind: 'ok', label: 'À jour', text: 'le dernier run a réussi et rien n\'a changé dans la config depuis.' },
-  { kind: 'changed', label: 'Modifié', text: 'la config a changé depuis le dernier run (les champs concernés sont nommés et entourés en orange dans Modifier) : relancer Claude.' },
+  { kind: 'changed', label: 'Modifié', text: 'la config a changé depuis le dernier run (les champs concernés sont nommés et entourés en orange dans Modifier ; « host.lan_ip » et consorts désignent une valeur de host.yaml dont la cible dépend) : relancer Claude.' },
   { kind: 'never', label: 'Jamais lancé', text: 'aucun run encore : lancer Claude pour déployer.' },
   { kind: 'blocked', label: 'Bloqué', text: 'Claude s\'est arrêté proprement parce qu\'il manque quelque chose à un humain (il dit quoi dans le run).' },
   { kind: 'failed', label: 'Échec', text: 'le dernier run a échoué ; le détail du run et son log expliquent pourquoi.' },
