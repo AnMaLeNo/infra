@@ -1,14 +1,34 @@
-# Image de l'UI/API (stack/ui). Le runner (claude -p) tourne sur l'hôte, pas ici.
-FROM python:3.12-slim
+# Image de l'UI/API (stack/ui), front React compilé puis embarqué dans le binaire `infra`.
+# Le runner (claude -p) tourne sur l'hôte, pas ici.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS front
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web ./
+RUN npm run build
+
+FROM --platform=$BUILDPLATFORM rust:1-bookworm AS build
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross && rm -rf /var/lib/apt/lists/* \
+ && rustup target add aarch64-unknown-linux-gnu
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY editor_ext ./editor_ext
+COPY --from=front /src/web/dist ./web/dist
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+RUN set -eux; case "$TARGETARCH" in \
+      arm64) cargo build --release --target aarch64-unknown-linux-gnu && cp target/aarch64-unknown-linux-gnu/release/infra /infra ;; \
+      *)     cargo build --release && cp target/release/infra /infra ;; \
+    esac
+
+FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates && rm -rf /var/lib/apt/lists/* \
  && curl -fsSL -o /usr/local/bin/sops "https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.linux.$(dpkg --print-architecture)" \
  && chmod +x /usr/local/bin/sops \
  && curl -fsSL https://download.docker.com/linux/static/stable/$(uname -m)/docker-27.5.1.tgz | tar xz -C /tmp \
  && mv /tmp/docker/docker /usr/local/bin/docker && rm -rf /tmp/docker
-WORKDIR /app
-COPY pyproject.toml README.md ./
-COPY infra ./infra
-RUN pip install --no-cache-dir .
+COPY --from=build /infra /usr/local/bin/infra
 ENV INFRA_CONFIG_DIR=/srv/infra
 EXPOSE 8000
 CMD ["infra", "serve", "--host", "0.0.0.0", "--port", "8000"]

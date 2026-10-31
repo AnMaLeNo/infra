@@ -6,12 +6,12 @@ set -euo pipefail
 CONFIG_DIR="${INFRA_CONFIG_DIR:-/srv/infra}"
 TOOL_DIR="$CONFIG_DIR/tool"
 [ "$(id -u)" = 0 ] || { echo "lance avec sudo" >&2; exit 1; }
-[ -f "$TOOL_DIR/pyproject.toml" ] || { echo "sous-module tool/ absent : git submodule update --init" >&2; exit 1; }
+[ -f "$TOOL_DIR/Cargo.toml" ] || { echo "sous-module tool/ absent : git submodule update --init" >&2; exit 1; }
 
 echo "== paquets"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq git curl ca-certificates gnupg age python3 python3-venv jq unattended-upgrades >/dev/null
+apt-get install -y -qq git curl ca-certificates gnupg age jq unattended-upgrades >/dev/null
 if ! command -v docker >/dev/null; then curl -fsSL https://get.docker.com | sh; fi
 if ! command -v tailscale >/dev/null; then curl -fsSL https://tailscale.com/install.sh | sh; fi
 if ! command -v sops >/dev/null; then
@@ -19,7 +19,6 @@ if ! command -v sops >/dev/null; then
   curl -fsSL -o /usr/local/bin/sops "https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.linux.${arch}"
   chmod +x /usr/local/bin/sops
 fi
-if ! command -v uv >/dev/null; then curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh >/dev/null; fi
 if ! command -v node >/dev/null; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null && apt-get install -y -qq nodejs >/dev/null
 fi
@@ -56,10 +55,18 @@ SUDO
 chmod 0440 /etc/sudoers.d/ai-infra
 
 echo "== CLI"
-# Hors de /root (0700) : le runner tourne en ai-infra et doit pouvoir traverser le venv.
-export UV_TOOL_DIR=/usr/local/lib/infra-uv UV_TOOL_BIN_DIR=/usr/local/bin
-rm -f /usr/local/bin/infra
-uv tool install --force --python 3.11 "$TOOL_DIR" >/dev/null 2>&1 || uv tool install --force "$TOOL_DIR" >/dev/null
+# Binaire unique (Rust, front embarqué) : celui du dépôt s'il a été compilé sur place, sinon celui attaché à la release
+# GitHub du tag sur lequel est le sous-module tool/ (CI : job `binaries`).
+arch=$(uname -m)
+if [ -x "$TOOL_DIR/target/release/infra" ]; then
+  install -m 0755 "$TOOL_DIR/target/release/infra" /usr/local/bin/infra
+else
+  tag=$(git -C "$TOOL_DIR" describe --tags --exact-match 2>/dev/null || true)
+  [ -n "$tag" ] || { echo "tool/ n'est pas sur un tag vX.Y.Z et n'a pas de binaire compilé (cargo build --release)" >&2; exit 1; }
+  curl -fsSL -o /usr/local/bin/infra.new "https://github.com/AnMaLeNo/infra/releases/download/$tag/infra-$arch"
+  chmod 0755 /usr/local/bin/infra.new && mv /usr/local/bin/infra.new /usr/local/bin/infra
+fi
+rm -rf /usr/local/lib/infra-uv   # ancienne installation Python (uv tool)
 infra --version
 
 echo "== runner (systemd)"
