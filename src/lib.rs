@@ -1,7 +1,10 @@
 //! infra : déploiement déclaratif piloté par Claude sur un hôte unique. Bibliothèque partagée par le binaire et les tests.
+pub mod agents;
 pub mod compose;
 pub mod config;
 pub mod dns;
+pub mod doctor;
+pub mod gitsync;
 pub mod history;
 pub mod models;
 pub mod paths;
