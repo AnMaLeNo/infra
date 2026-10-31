@@ -115,3 +115,15 @@ fn py_json_matches_python_dumps() {
         r#"{"a": {"y": "ligne\n\"x\"", "z": 1.5}, "b": [1, "\u00e9", true, null]}"#
     );
 }
+
+#[test]
+fn cli_set_parses_list_and_dict() {
+    let _e = common::env();
+    let kv = infra::cli::parse_kv(&["entries={fan-admin: public}".to_string(), "data=[api:/data]".into(), "port=8080".into(), "notes=".into()]);
+    assert_eq!(Value::Object(kv.clone()), json!({"entries": {"fan-admin": "public"}, "data": ["api:/data"], "port": 8080, "notes": null}));
+    config::set_project_fields("fan-controller", "cli", &kv).unwrap();
+    let prj = config::project("fan-controller").unwrap();
+    assert_eq!(prj.entries.get("fan-admin").map(String::as_str), Some("public"));
+    assert_eq!(prj.data, ["api:/data"]);
+    assert_eq!(prj.port, Some(8080));
+}

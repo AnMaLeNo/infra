@@ -9,3 +9,6 @@ runs/
 .age-key
 *.plain
 /target
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep

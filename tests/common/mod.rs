@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Fixture `env` : copie d'example-config dans un dossier temporaire + variables INFRA_* ; les variables d'env
 //! étant globales au processus, les tests qui l'utilisent sont sérialisés par un verrou.
 use std::path::{Path, PathBuf};
