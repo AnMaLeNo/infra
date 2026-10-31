@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, SHARED_DEFAULTS, type Shared, type SharedView } from '../api'
-import { Dialog, Field, gitNotice } from './ui'
+import { gitNotice } from '../lib/toast'
+import { Dialog, Field } from './ui'
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/
 

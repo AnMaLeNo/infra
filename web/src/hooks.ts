@@ -13,7 +13,7 @@ export function usePoll<T>(fn: () => Promise<T>, intervalMs: number): Polled<T> 
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const fnRef = useRef(fn)
-  fnRef.current = fn
+  useEffect(() => { fnRef.current = fn })
   const reload = useCallback(async () => {
     try {
       setData(await fnRef.current())

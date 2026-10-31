@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, type Llm } from '../api'
-import { Dialog, Field, gitNotice } from './ui'
+import { gitNotice } from '../lib/toast'
+import { Dialog, Field } from './ui'
 
 export function SettingsDialog({ llm, onClose, onSaved }: { llm: Llm; onClose: () => void; onSaved: () => void }) {
   const [model, setModel] = useState(llm.model)

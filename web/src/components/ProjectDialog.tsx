@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { api, PROJECT_DEFAULTS, type Project, type ProjectView } from '../api'
-import { Dialog, Field, gitNotice, listToText, mapToText, textToList, textToMap } from './ui'
+import { listToText, mapToText, textToList, textToMap } from '../lib/form'
+import { gitNotice } from '../lib/toast'
+import { Dialog, Field } from './ui'
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/
 
