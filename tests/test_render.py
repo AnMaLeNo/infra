@@ -140,3 +140,19 @@ def test_entries_validation(env):
     p = Project(repo="https://github.com/x/y", entries={"ok": "public"}, entry_ports={"ok": 1}, pr_proposed="https://github.com/x/y/pull/1")
     assert "entry_ports" not in p.intent() and "pr_proposed" not in p.intent() and "entries" in p.intent()
     assert p.decided() == {"entry_ports": {"ok": 1}, "pr_proposed": "https://github.com/x/y/pull/1"}
+
+
+def test_notes_do_not_mark_project_changed_and_changed_fields(env):
+    from infra import runner
+
+    state = runner.load_state()
+    prj = config.project("catacombes")
+    assert runner.changed_fields(prj, state.get("catacombes", {})) == []            # jamais lancé
+    runner.mark_applied(state, "catacombes", prj, ok=True)
+    before = runner._hash(config.project("catacombes"))
+    config.set_project_fields("catacombes", notes="constat de Claude après le run")
+    assert runner._hash(config.project("catacombes")) == before
+    assert runner.changed_fields(config.project("catacombes"), state["catacombes"]) == []
+    config.set_project_fields("catacombes", domain="cata", previews="private", notes="autre")
+    assert runner._hash(config.project("catacombes")) != before
+    assert runner.changed_fields(config.project("catacombes"), state["catacombes"]) == ["domain", "previews"]
