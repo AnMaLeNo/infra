@@ -30,7 +30,7 @@ pub const SETTINGS: [(&str, &str); 1] = [("claudeCode.claudeProcessWrapper", "/u
 pub const OPEN_FILE: &str = ".editor-open";
 
 #[derive(Embed)]
-#[folder = "infra/editor_ext/"]
+#[folder = "editor_ext/"]
 struct EditorExt;
 
 fn home() -> PathBuf {

@@ -9,16 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv sync --extra dev
-      - run: uv run ruff check .
-      - run: uv run pytest -q
-      - run: docker compose -f stack/traefik/docker-compose.yml config -q
-        env: { TAILSCALE_IP: 100.64.0.1, STACK_STATE: /tmp, CF_API_TOKEN: x, PRIVATE_ZONE: pi.example.com, ACME_EMAIL: a@b.c, PUBLIC_INGRESS: cloudflare-tunnel }
-  rust:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
       - run: npm ci --no-audit --no-fund && npx oxlint src && npm run build
@@ -28,9 +18,34 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
-      - run: cargo build --release && ./target/release/infra --version
+      - run: docker compose -f stack/traefik/docker-compose.yml config -q
+        env: { TAILSCALE_IP: 100.64.0.1, STACK_STATE: /tmp, CF_API_TOKEN: x, PRIVATE_ZONE: pi.example.com, ACME_EMAIL: a@b.c, PUBLIC_INGRESS: cloudflare-tunnel }
+  # Binaires pour install.sh (x86_64 natif, aarch64 cross-compilé avec le gcc Debian) ; attachés à la release du tag.
+  binaries:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - run: npm ci --no-audit --no-fund && npm run build
+        working-directory: web
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-unknown-linux-gnu }
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+      - run: cargo build --release && cp target/release/infra infra-x86_64
+      - run: cargo build --release --target aarch64-unknown-linux-gnu && cp target/aarch64-unknown-linux-gnu/release/infra infra-aarch64
+        env: { CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc }
       - uses: actions/upload-artifact@v4
-        with: { name: infra-x86_64, path: target/release/infra }
+        with: { name: infra-binaries, path: "infra-*" }
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            infra-x86_64
+            infra-aarch64
   image:
     if: github.event_name == 'push' || startsWith(github.ref, 'refs/tags/')
     needs: test
@@ -38,7 +53,6 @@ jobs:
     permissions: { contents: read, packages: write }
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
@@ -53,31 +67,6 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-  image-rust:
-    if: github.event_name == 'push' || startsWith(github.ref, 'refs/tags/')
-    needs: rust
-    runs-on: ubuntu-latest
-    permissions: { contents: read, packages: write }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=ref,event=branch,suffix=-rs
-            type=semver,pattern={{version}},suffix=-rs
-            type=sha,suffix=-rs
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.rust
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
