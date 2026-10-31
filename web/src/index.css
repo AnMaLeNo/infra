@@ -177,7 +177,7 @@ dialog .dlg-foot .spacer { flex: 1; }
 .ev.error { border-left-color: var(--ko); }
 .ev pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.5px; background: var(--paper); padding: 6px 8px; border-radius: 4px; max-height: 240px; overflow: auto; }
 .hist { display: flex; flex-direction: column; gap: 6px; }
-.hist-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); font-size: 13.5px; }
+.hist-row { display: grid; grid-template-columns: max-content minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); font-size: 13.5px; }
 .hist-row .when { color: var(--muted); white-space: nowrap; }
 .hist-row.clickable { cursor: pointer; }
 .hist-row.clickable:hover { background: var(--paper); }
