@@ -108,6 +108,8 @@ async fn editor_route_requests_the_session_of_a_run() {
     assert_eq!(call("POST", "/api/runs/absent.json/editor", None).await.0, StatusCode::NOT_FOUND);
     let st = call("POST", "/api/runs/..%2Fx.json/editor", None).await.0;
     assert!(st == StatusCode::BAD_REQUEST || st == StatusCode::NOT_FOUND);
+    let (_, full) = call("GET", "/api/runs/c-p.json/full", None).await;
+    assert_eq!(full["log"], "c-p.log");
     let (st, text) = call("GET", "/api/runs/c-p.log/log", None).await;
     assert!(st == StatusCode::OK && text.as_str().unwrap().contains("from-log"));
 }

@@ -290,7 +290,14 @@ async fn run_detail(Path(file): Path<String>) -> Result<String, ApiError> {
 /// Le run complet (prompt, entrée avant/après, résultat, coût…).
 async fn run_full(Path(file): Path<String>) -> Res {
     check_file(&file, ".json")?;
-    blocking(move || Ok(Json(get_run(&file)?))).await
+    blocking(move || {
+        let mut r = get_run(&file)?;
+        let log = file.replace(".json", ".log");
+        r["file"] = json!(file);
+        r["log"] = if paths::runs_dir().join(&log).exists() { json!(log) } else { Value::Null };
+        Ok(Json(r))
+    })
+    .await
 }
 
 /// Demande à l'éditeur (`infra editor`) d'ouvrir la session Claude de ce run ; le front ouvre ensuite l'éditeur.
