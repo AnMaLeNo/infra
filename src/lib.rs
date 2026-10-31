@@ -4,9 +4,11 @@ pub mod config;
 pub mod history;
 pub mod models;
 pub mod paths;
+pub mod previews;
 pub mod render;
 pub mod secrets;
 pub mod skills;
+pub mod stack;
 pub mod state;
 pub mod util;
 
