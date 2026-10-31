@@ -74,7 +74,7 @@ section { min-width: 0; }
 .card .urls { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .card .urls a { color: var(--accent); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .urls a:hover { text-decoration: underline; }
-.card .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.card .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 2px; }
 .card .actions .spacer { flex: 1; }
 .card .detail { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px; }
 .card .detail.warn { color: var(--warn); }
