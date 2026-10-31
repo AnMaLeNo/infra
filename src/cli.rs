@@ -75,6 +75,9 @@ pub enum Command {
     Enqueue { name: String },
     /// Projets modifiés depuis leur dernier run, demandes en attente, run en cours.
     Plan,
+    /// Recalcule les empreintes « modifié » de runs/.state.json depuis l'entrée du dernier run et le host.yaml
+    /// courant (à lancer après une mise à jour qui change la formule du hash, sinon tout passe orange).
+    Rehash,
     /// Derniers runs LLM.
     Runs {
         #[arg(long, default_value_t = 20)]
@@ -376,6 +379,12 @@ pub fn run(cli: Cli) -> Result<i32> {
                 "en attente": or_text(&queued, queued.is_empty(), "aucune"),
                 "en cours": running.map(Value::String).unwrap_or(json!("aucun")),
             }));
+            Ok(0)
+        }
+        Command::Rehash => {
+            let mut st = state::load_state();
+            let done = state::rehash(&mut st)?;
+            out(&json!({"recalculés": done, "modifiés": state::changed_since_last_run(&st)?}));
             Ok(0)
         }
         Command::Runs { limit } => {

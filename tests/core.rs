@@ -12,14 +12,25 @@ fn fields(v: Value) -> serde_json::Map<String, Value> {
 fn hashes_identical_to_python_version() {
     let _e = common::env();
     let reg = config::registry().unwrap();
+    let host = config::host().unwrap();
     let h = |n: &str| state::hash(Some(&Entry::Project(reg.projects[n].clone())));
-    assert_eq!(h("catacombes"), "327d03d6f939fe1b");
-    assert_eq!(h("fan-controller"), "2620bbb66449ba3f");
-    assert_eq!(h("site-client"), "1ba94d42734b449d");
+    let deps = |n: &str| Value::Object(state::host_deps(&Entry::Project(reg.projects[n].clone()), &host));
+    // sans dépendance à l'hôte (expose none) : identique à la version Python
+    assert_eq!(deps("unused"), json!({}));
     assert_eq!(h("unused"), "16a3dc568671a148");
-    assert_eq!(h("immich"), "ca2e96d5a8ca5eb5");
+    // avec : l'empreinte inclut les valeurs de host.yaml dont dépend le rendu (stable tant qu'elles ne bougent pas)
+    assert_eq!(deps("catacombes"), json!({"public_zone": "antoine42.com", "public_ingress": "cloudflare-tunnel"}));
+    assert_eq!(h("catacombes"), "6ed2241c03db1783");
+    assert_eq!(deps("fan-controller"), json!({"private_zone": "pi.antoine42.com", "tailscale_ip": "100.72.6.43"}));
+    assert_eq!(h("fan-controller"), "55870c9cbd55ad3d");
+    assert_eq!(h("site-client"), "c0746fbc108b0a3b");
+    assert_eq!(h("immich"), "925a8491e359984e");
     let mqtt = config::shared_service("mqtt").unwrap();
-    assert_eq!(state::hash(Some(&Entry::Shared(mqtt))), "52ba5bf3ea1cda3a");
+    assert_eq!(
+        Value::Object(state::host_deps(&Entry::Shared(mqtt.clone()), &host)),
+        json!({"lan_ip": ["192.168.1.100", "192.168.1.101"], "tailscale_ip": "100.72.6.43"})
+    );
+    assert_eq!(state::hash(Some(&Entry::Shared(mqtt))), "0da7550be9fd7617");
     assert_eq!(state::hash(None), "absent");
 }
 
@@ -126,4 +137,55 @@ fn cli_set_parses_list_and_dict() {
     assert_eq!(prj.entries.get("fan-admin").map(String::as_str), Some("public"));
     assert_eq!(prj.data, ["api:/data"]);
     assert_eq!(prj.port, Some(8080));
+}
+
+#[test]
+fn host_fields_the_entry_depends_on_mark_it_changed_and_rehash_recomputes() {
+    let _e = common::env();
+    let mut st = state::load_state();
+    let svc = Entry::Shared(config::shared_service("mqtt").unwrap());
+    state::mark_applied(&mut st, "shared.mqtt", Some(&svc), true, Some("ok")).unwrap();
+    let cata = Entry::Project(config::project("catacombes").unwrap());
+    state::mark_applied(&mut st, "catacombes", Some(&cata), true, Some("ok")).unwrap();
+    assert_eq!(st["shared.mqtt"]["host"]["lan_ip"], json!(["192.168.1.100", "192.168.1.101"]));
+    // seuls mqtt et catacombes ont un run ici ; les autres cibles sont « jamais lancées », donc toujours listées
+    let changed = || {
+        let all = state::changed_since_last_run(&state::load_state()).unwrap();
+        all.into_iter().filter(|n| n == "shared.mqtt" || n == "catacombes").collect::<Vec<_>>()
+    };
+    assert!(changed().is_empty());
+
+    // le modèle LLM ou une note de l'hôte : aucune cible ne bouge
+    let host_yaml = infra::paths::config_dir().join("host.yaml");
+    let orig = std::fs::read_to_string(&host_yaml).unwrap();
+    std::fs::write(&host_yaml, orig.replace("model: sonnet", "model: opus").replace("notes: \"\"", "notes: \"maj\"")).unwrap();
+    assert!(changed().is_empty(), "{:?}", changed());
+
+    // lan_ip change : seul le broker (listen lan + port) est « modifié », champ nommé host.lan_ip
+    std::fs::write(&host_yaml, orig.replace("lan_ip: [192.168.1.100, 192.168.1.101]", "lan_ip: 192.168.1.101")).unwrap();
+    assert_eq!(changed(), ["shared.mqtt"]);
+    let now = Entry::Shared(config::shared_service("mqtt").unwrap());
+    assert_eq!(state::changed_fields(&now, st.get("shared.mqtt")), ["host.lan_ip"]);
+    assert!(state::changed_fields(&Entry::Project(config::project("catacombes").unwrap()), st.get("catacombes")).is_empty());
+
+    // zone publique : catacombes (public) bouge, pas le broker
+    std::fs::write(&host_yaml, orig.replace("public_zone: antoine42.com", "public_zone: autre.fr")).unwrap();
+    assert_eq!(changed(), ["catacombes"]);
+    let now = Entry::Project(config::project("catacombes").unwrap());
+    assert_eq!(state::changed_fields(&now, st.get("catacombes")), ["host.public_zone"]);
+
+    // un état d'avant cette version (sans `host`) : pas de faux host.* ; rehash le complète et remet tout au vert
+    let mut old = state::load_state();
+    old["catacombes"].as_object_mut().unwrap().remove("host");
+    old["catacombes"]["hash"] = json!("ancienne-formule");
+    state::save_state(&old).unwrap();
+    assert!(changed().contains(&"catacombes".to_string()));
+    assert!(state::changed_fields(&now, old.get("catacombes")).is_empty());
+    let mut st2 = state::load_state();
+    let done = state::rehash(&mut st2).unwrap();
+    assert!(done.contains(&"catacombes".to_string()) && done.contains(&"shared.mqtt".to_string()));
+    assert_eq!(st2["catacombes"]["host"]["public_zone"], "autre.fr");
+    assert_eq!(st2["catacombes"]["ok"], true);
+    assert!(changed().is_empty(), "{:?}", changed());
+    std::fs::write(&host_yaml, orig).unwrap();
 }
