@@ -8,3 +8,4 @@ dist/
 runs/
 .age-key
 *.plain
+/target
