@@ -11,6 +11,7 @@ pub mod gitsync;
 pub mod history;
 pub mod mcp;
 pub mod models;
+pub mod observations;
 pub mod paths;
 pub mod previews;
 pub mod render;

@@ -72,6 +72,8 @@ pub fn build_prompt(name: &str, prj: Option<&Project>, previous: Option<&Value>)
         "n'affiche jamais la valeur d'un secret ; n'invente pas de valeur manquante (termine en échec avec la question précise) ;".into(),
         "ne modifie pas le repo du projet sauf cas prévu par un skill (PR). Termine par un résumé : ce qui a été fait,".into(),
         "les URLs, ce que tu as dû faire à la main (candidats à devenir des tools), ce qu'il reste à un humain.".into(),
+        "`notes` est une information laissée par l'humain, pas un état à atteindre ; un constat utile mais hors périmètre".into(),
+        "d'infra se dépose avec le tool `observe` (visible sur la carte), sans rendre le run bloqué.".into(),
         String::new(),
         format!("Clôture obligatoire : termine par UN appel au tool `run_report(project='{name}', status=ok|bloqué|échec, summary, needs_human)`."),
         "`ok` seulement si l'état cible est atteint et vérifié ; `bloqué` s'il manque quelque chose à un humain (rien de cassé) ;".into(),
@@ -110,7 +112,12 @@ pub fn build_shared_prompt(name: &str, svc: Option<&Shared>, previous: Option<&V
     lines.extend([
         String::new(),
         "Les choix humains (kind, listen, port, auth, data) sont fixés : tu ne les changes pas ; s'ils sont incohérents ou".into(),
-        "incomplets (ex. `listen: [lan]` sans `lan_ip` dans host.yaml), termine `bloqué` avec la question précise.".into(),
+        "incomplets (ex. `listen: [lan]` sans `lan_ip` dans host.yaml, ou une IP de `lan_ip` que l'hôte ne porte pas),".into(),
+        "termine `bloqué` avec la question précise. `lan_ip` peut lister plusieurs IP (eth0 et wlan0) : le service écoute".into(),
+        "sur chacune, c'est tout ; les clients hors Docker (ESP…) relèvent de l'humain, pas d'infra.".into(),
+        "`notes` est une information laissée par l'humain (clients, historique), pas un état à atteindre ni à vérifier ;".into(),
+        "un constat utile mais hors périmètre (client qui ne répond pas, reste à nettoyer) se dépose avec le tool `observe`,".into(),
+        "visible sur la carte du service, sans rendre le run bloqué.".into(),
         "Le *comment* (image, container, compose_file) est à toi : écris-le avec shared_set.".into(),
         String::new(),
         "Tu disposes du serveur MCP `infra` (shared_get/shared_set/shared_status, host_addresses, host_info, registry_get,".into(),
@@ -185,9 +192,12 @@ fn run_inner(name: &str, prompt: &str, skill_list: Vec<String>, previous: Option
     let mcp_cfg = paths::runs_dir().join(".mcp.json");
     fs::create_dir_all(paths::runs_dir())?;
     let infra_bin = which("infra").map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "infra".into());
+    let run_stem = run_stem(&rec);
+    // INFRA_RUN : le tool `observe` rattache ses observations à ce run
     fs::write(
         &mcp_cfg,
-        serde_json::to_string(&json!({"mcpServers": {"infra": {"command": infra_bin, "args": ["mcp"], "env": {"INFRA_CONFIG_DIR": paths::config_dir().to_string_lossy()}}}}))?,
+        serde_json::to_string(&json!({"mcpServers": {"infra": {"command": infra_bin, "args": ["mcp"],
+            "env": {"INFRA_CONFIG_DIR": paths::config_dir().to_string_lossy(), "INFRA_RUN": run_stem}}}}))?,
     )?;
     let local = started.with_timezone(&chrono::Local);
     let run_name = format!("{name} · {}", local.format("%d/%m %H:%M"));
@@ -223,7 +233,12 @@ fn run_inner(name: &str, prompt: &str, skill_list: Vec<String>, previous: Option
     let rep = read_report(name);
     let status = rep["status"].as_str().unwrap_or("inconnu").to_string();
     rec["status"] = json!(status);
-    rec["needs_human"] = json!(secrets::mask(rep.get("needs_human").and_then(Value::as_str).unwrap_or(""), &secret_values));
+    let needs_human = secrets::mask(rep.get("needs_human").and_then(Value::as_str).unwrap_or(""), &secret_values);
+    rec["needs_human"] = json!(needs_human);
+    if !needs_human.trim().is_empty() {
+        // visible sur la carte de la cible même quand le run est ok (sinon enfoui dans le texte du run)
+        let _ = crate::observations::add(name, &needs_human, "run_report", Some(&status), Some(&run_stem));
+    }
     rec["report"] = json!(secrets::mask(rep.get("summary").and_then(Value::as_str).unwrap_or(""), &secret_values));
     // claude -p sort 0 même quand il s'est déclaré bloqué : c'est son appel à run_report qui fait foi
     rec["ok"] = json!(out.status.success() && !rec["is_error"].as_bool().unwrap_or(false) && status == "ok");
@@ -238,11 +253,16 @@ fn run_inner(name: &str, prompt: &str, skill_list: Vec<String>, previous: Option
     Ok(rec)
 }
 
+/// Nom du fichier de run (sans extension) : `<started sans ':'>-<cible>`.
+pub fn run_stem(rec: &Value) -> String {
+    let started = rec["started"].as_str().unwrap_or("").replace(':', "").replace("+00:00", "Z");
+    format!("{started}-{}", rec["project"].as_str().unwrap_or(""))
+}
+
 pub fn save(rec: &Value) -> Result<PathBuf> {
     let d = paths::runs_dir();
     fs::create_dir_all(&d)?;
-    let started = rec["started"].as_str().unwrap_or("").replace(':', "").replace("+00:00", "Z");
-    let p = d.join(format!("{started}-{}.json", rec["project"].as_str().unwrap_or("")));
+    let p = d.join(format!("{}.json", run_stem(rec)));
     fs::write(&p, serde_json::to_string_pretty(rec)?)?;
     Ok(p)
 }

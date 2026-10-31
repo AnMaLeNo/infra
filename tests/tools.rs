@@ -1,7 +1,7 @@
 mod common;
 
 use infra::state;
-use infra::{config, mcp, paths, runner, tools};
+use infra::{config, mcp, observations, paths, runner, tools};
 use serde_json::json;
 
 #[test]
@@ -77,4 +77,44 @@ fn dry_run_consumes_queue_and_builds_prompt() {
     assert_eq!(rec["skills"], json!(["shared-service"]));
     let p = runner::build_prompt("unused", Some(&config::project("unused").unwrap()), None).unwrap();
     assert!(p.contains("`service` n'est pas fixé"));
+}
+
+#[test]
+fn observe_tool_records_for_card_and_lan_ip_is_a_list() {
+    let _e = common::env();
+    // host.yaml d'exemple : lan_ip en liste ; une chaîne seule reste acceptée
+    let h = config::host().unwrap();
+    assert_eq!(h.lan_ip, vec!["192.168.1.100", "192.168.1.101"]);
+    let one: infra::models::Host = serde_yaml::from_str("name: x\ntailscale_ip: 100.0.0.1\npublic_zone: a\nprivate_zone: b\nlan_ip: 10.0.0.5\n").unwrap();
+    assert_eq!(one.lan_ip, vec!["10.0.0.5"]);
+    let none: infra::models::Host = serde_yaml::from_str("name: x\ntailscale_ip: 100.0.0.1\npublic_zone: a\nprivate_zone: b\nlan_ip: null\n").unwrap();
+    assert!(none.lan_ip.is_empty());
+    let addr = tools::host_addresses().unwrap();
+    assert_eq!(addr["lan_ip"].as_array().unwrap().len(), 2);
+    assert!(addr.get("lan_ip_missing").is_some() && addr.get("host_ips").is_some());
+    // shared_status : `lan` → une adresse d'écoute attendue par IP déclarée
+    let st = tools::shared_status("mqtt").unwrap();
+    let wanted: Vec<&str> = st["listen_wanted"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(wanted.contains(&"192.168.1.100:1883") && wanted.contains(&"192.168.1.101:1883"), "{wanted:?}");
+
+    // observe : cible connue (projet ou shared.<S>), texte non vide ; visible via observations::list, effaçable
+    let bad = mcp::call_tool("observe", json!({"project": "inconnu", "text": "x"}).as_object().unwrap());
+    assert!(bad["isError"] == true && bad["content"][0]["text"].as_str().unwrap().contains("cible inconnue"));
+    std::env::set_var("INFRA_RUN", "2026-01-01T000000Z-shared.mqtt");
+    let r = mcp::call_tool("observe", json!({"project": "shared.mqtt", "text": "l'ESP 192.168.1.78 ne répond pas au ping"}).as_object().unwrap());
+    std::env::remove_var("INFRA_RUN");
+    assert_eq!(r["isError"], false, "{r}");
+    mcp::call_tool("observe", json!({"project": "catacombes", "text": "reste /tmp/x à supprimer"}).as_object().unwrap());
+    let l = observations::list("shared.mqtt");
+    assert_eq!(l.len(), 1);
+    assert_eq!(l[0]["source"], "observe");
+    assert_eq!(l[0]["run"], "2026-01-01T000000Z-shared.mqtt");
+    assert!(l[0]["text"].as_str().unwrap().contains("ESP"));
+    assert_eq!(observations::list("catacombes").len(), 1);
+    assert!(paths::runs_dir().join("observations/shared.mqtt.jsonl").exists());
+    observations::clear("shared.mqtt").unwrap();
+    assert!(observations::list("shared.mqtt").is_empty());
+    assert_eq!(observations::list("catacombes").len(), 1);
+    assert!(observations::add("x/y", "t", "observe", None, None).is_err());
+    assert!(observations::add("catacombes", "   ", "observe", None, None).is_err());
 }

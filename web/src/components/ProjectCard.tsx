@@ -3,12 +3,13 @@ import { repoShort, fmtRel } from '../lib/format'
 import { statusOf } from '../lib/status'
 import { StatusBadge } from './StatusBadge'
 
-export function ProjectCard({ name, view, onRun, onEdit, onHistory }: {
+export function ProjectCard({ name, view, onRun, onEdit, onHistory, onObservations }: {
   name: string
   view: ProjectView
   onRun: () => void
   onEdit: () => void
   onHistory: () => void
+  onObservations: () => void
 }) {
   const e = view.entry
   const st = statusOf(view)
@@ -21,6 +22,11 @@ export function ProjectCard({ name, view, onRun, onEdit, onHistory }: {
         <h3 title={name}>{name}</h3>
         {!e.enabled && <span className="tag">désactivé</span>}
         <StatusBadge state={view} />
+        {view.observations.length > 0 && (
+          <button type="button" className="tag obs" onClick={onObservations} title="Remarques laissées par Claude pour toi, hors statut : cliquer pour lire">
+            {view.observations.length} remarque{view.observations.length > 1 ? 's' : ''}
+          </button>
+        )}
       </div>
       <div className="meta">
         <a href={e.repo} target="_blank" rel="noreferrer" className="ellipsis" title={e.repo}>{repoShort(e.repo)}{e.ref !== 'main' ? ` @ ${e.ref}` : ''}</a>

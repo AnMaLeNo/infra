@@ -136,18 +136,49 @@ fn detected_lan_ip() -> Option<String> {
     words.get(i + 1).map(|w| w.to_string())
 }
 
+/// Toutes les IPv4 portées par l'hôte (`ip -4 -br addr`), hors loopback et interfaces Docker.
+pub fn host_ipv4s() -> Vec<String> {
+    let Ok(out) = Command::new("ip").args(["-4", "-br", "addr"]).output() else { return vec![] };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| {
+            let mut w = l.split_whitespace();
+            let ifname = w.next()?;
+            if ifname == "lo" || ifname.starts_with("docker") || ifname.starts_with("br-") || ifname.starts_with("veth") {
+                return None;
+            }
+            Some(w.skip(1).filter_map(|a| a.split('/').next()).map(str::to_string).collect::<Vec<_>>())
+        })
+        .flatten()
+        .collect()
+}
+
+/// IPs de l'hôte. `lan_ip` est ce que l'humain déclare (une ou plusieurs IP LAN) : l'outil vérifie seulement
+/// qu'elles existent sur l'hôte (`lan_ip_missing`) ; laquelle porte la route par défaut n'est qu'une information.
 pub fn host_addresses() -> Result<Value> {
     let h = config::host()?;
-    let detected = detected_lan_ip();
-    let warning = match (&h.lan_ip, &detected) {
-        (Some(lan), det) if !lan.is_empty() && Some(lan) != det.as_ref() => Some(format!(
-            "host.yaml lan_ip={lan} mais l'IP LAN détectée est {} : signale-le, ne corrige pas tout seul",
-            det.clone().unwrap_or_else(|| "None".into())
-        )),
-        _ => None,
-    };
-    Ok(json!({"tailscale_ip": h.tailscale_ip, "lan_ip": h.lan_ip, "lan_ip_detected": detected,
-              "traefik_net_gateway": stack::network_gateway()?, "warning": warning}))
+    let host_ips = host_ipv4s();
+    let missing: Vec<&String> = h.lan_ip.iter().filter(|ip| !host_ips.is_empty() && !host_ips.contains(ip)).collect();
+    let warning = (!missing.is_empty()).then(|| {
+        format!(
+            "host.yaml lan_ip déclare {} mais l'hôte ne porte pas cette adresse (IPs : {}) : termine bloqué, ne devine pas",
+            missing.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "),
+            host_ips.join(", ")
+        )
+    });
+    Ok(json!({"tailscale_ip": h.tailscale_ip, "lan_ip": h.lan_ip, "lan_ip_missing": missing, "host_ips": host_ips,
+              "lan_ip_default_route": detected_lan_ip(), "traefik_net_gateway": stack::network_gateway()?, "warning": warning}))
+}
+
+/// Observation pour l'humain sur une cible (`<projet>` ou `shared.<S>`), sans toucher au statut du run.
+pub fn observe(project: &str, text: &str) -> Result<Value> {
+    let known = config::registry()?.projects.contains_key(project)
+        || config::shared_name(project).map(|n| config::shared().map(|s| s.services.contains_key(n)).unwrap_or(false)).unwrap_or(false);
+    if !known {
+        bail!("cible inconnue : {project:?} (nom d'un projet du registre, ou shared.<nom> pour un service partagé)");
+    }
+    let run = std::env::var("INFRA_RUN").ok();
+    crate::observations::add(project, text, "observe", None, run.as_deref())
 }
 
 pub fn shared_get(name: Option<&str>) -> Result<Value> {
@@ -217,10 +248,10 @@ pub fn shared_status(name: &str) -> Result<Value> {
         Some(port) => svc
             .listen
             .iter()
-            .filter_map(|x| match x.as_str() {
-                "lan" => h.lan_ip.clone().filter(|v| !v.is_empty()),
-                "tailnet" => Some(h.tailscale_ip.clone()),
-                _ => None,
+            .flat_map(|x| match x.as_str() {
+                "lan" => h.lan_ip.clone(),
+                "tailnet" => vec![h.tailscale_ip.clone()],
+                _ => vec![],
             })
             .map(|ip| format!("{ip}:{port}"))
             .collect(),

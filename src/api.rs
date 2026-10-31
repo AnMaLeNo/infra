@@ -12,7 +12,7 @@ use serde_json::{json, Map, Value};
 
 use crate::render::Target;
 use crate::state::{self, Entry};
-use crate::{compose, config, editor, gitsync, history, models, paths, runner, skills, VERSION};
+use crate::{VERSION, compose, config, editor, gitsync, history, models, observations, paths, runner, skills};
 
 #[derive(Embed)]
 #[folder = "web/dist/"]
@@ -109,9 +109,10 @@ async fn put_settings(Json(body): Json<Value>) -> Res {
     .await
 }
 
-fn run_state(st: Option<&Value>, entry: &Entry) -> Map<String, Value> {
+fn run_state(key: &str, st: Option<&Value>, entry: &Entry) -> Map<String, Value> {
     let g = |k: &str| st.and_then(|s| s.get(k)).cloned().unwrap_or(Value::Null);
     let mut m = Map::new();
+    m.insert("observations".into(), json!(observations::list(key)));
     m.insert("changed".into(), json!(st.and_then(|s| s.get("hash")).and_then(Value::as_str) != Some(&state::hash(Some(entry)))));
     m.insert("never_run".into(), json!(st.and_then(|s| s.get("hash")).is_none()));
     m.insert("changed_fields".into(), json!(state::changed_fields(entry, st)));
@@ -129,7 +130,7 @@ pub fn projects_view() -> anyhow::Result<Value> {
     for (name, prj) in &reg.projects {
         let t = Target::new(name, prj.clone(), h.clone(), None);
         let e = Entry::Project(prj.clone());
-        let mut m = run_state(st.get(name), &e);
+        let mut m = run_state(name, st.get(name), &e);
         m.insert("entry".into(), Value::Object(prj.dump()));
         m.insert("decided".into(), Value::Object(prj.decided()));
         m.insert("urls".into(), json!(t.urls()));
@@ -156,6 +157,23 @@ async fn request_run(Path(name): Path<String>) -> Res {
     .await
 }
 
+/// L'humain a lu les observations de Claude sur cette cible : on les efface de la carte.
+async fn clear_project_observations(Path(name): Path<String>) -> Res {
+    blocking(move || {
+        observations::clear(&name)?;
+        Ok(Json(json!({"ok": true})))
+    })
+    .await
+}
+
+async fn clear_shared_observations(Path(name): Path<String>) -> Res {
+    blocking(move || {
+        observations::clear(&config::shared_key(&name))?;
+        Ok(Json(json!({"ok": true})))
+    })
+    .await
+}
+
 /// Tout ce qui est arrivé à un projet : versions de sa config (runs/history) + ses runs (runs/*-<P>.json).
 async fn project_history(Path(name): Path<String>) -> Res {
     blocking(move || Ok(Json(json!({"config": history::for_project(&name)?, "runs": runner::runs_for_project(&name)?})))).await
@@ -169,7 +187,7 @@ pub fn shared_view() -> anyhow::Result<Value> {
     for (name, svc) in &reg.services {
         let key = config::shared_key(name);
         let e = Entry::Shared(svc.clone());
-        let mut m = run_state(st.get(&key), &e);
+        let mut m = run_state(&key, st.get(&key), &e);
         m.insert("entry".into(), Value::Object(svc.dump()));
         m.insert("decided".into(), Value::Object(svc.decided()));
         m.insert("users".into(), json!(config::users_of(name)?));
@@ -335,10 +353,12 @@ pub fn router() -> Router {
         .route("/api/projects/{name}", get(project).put(put_project).delete(delete_project))
         .route("/api/projects/{name}/run", post(request_run))
         .route("/api/projects/{name}/history", get(project_history))
+        .route("/api/projects/{name}/observations", axum::routing::delete(clear_project_observations))
         .route("/api/shared", get(shared_services))
         .route("/api/shared/{name}", axum::routing::put(put_shared).delete(delete_shared))
         .route("/api/shared/{name}/run", post(request_shared_run))
         .route("/api/shared/{name}/history", get(shared_history))
+        .route("/api/shared/{name}/observations", axum::routing::delete(clear_shared_observations))
         .route("/api/runner", get(runner_state))
         .route("/api/runs", get(runs))
         .route("/api/runs/{file}", get(run_detail))

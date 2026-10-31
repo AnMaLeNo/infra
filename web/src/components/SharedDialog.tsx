@@ -8,7 +8,7 @@ const NAME_RE = /^[a-z0-9][a-z0-9-]*$/
 export function SharedDialog({ name, view, lanIp, onClose, onSaved }: {
   name: string | null
   view?: SharedView
-  lanIp: string | null
+  lanIp: string[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -106,7 +106,7 @@ export function SharedDialog({ name, view, lanIp, onClose, onSaved }: {
         </Field>
         <Field label="Écoute sur l'hôte" hint="jamais 0.0.0.0" changed={changed.has('listen')} full>
           <div className="checks">
-            <label title={lanIp ? `Clients sans Tailscale (ESP, machines du réseau local) via ${lanIp}` : 'Exige lan_ip dans host.yaml'}><input type="checkbox" checked={f.lan} onChange={(e) => set('lan', e.target.checked)} /> LAN{lanIp ? ` (${lanIp})` : ''}</label>
+            <label title={lanIp.length ? `Clients sans Tailscale (ESP, machines du réseau local) via ${lanIp.join(', ')}` : 'Exige lan_ip dans host.yaml'}><input type="checkbox" checked={f.lan} onChange={(e) => set('lan', e.target.checked)} /> LAN{lanIp ? ` (${lanIp})` : ''}</label>
             <label title="Depuis le tailnet, sur l'IP Tailscale de l'hôte"><input type="checkbox" checked={f.tailnet} onChange={(e) => set('tailnet', e.target.checked)} /> tailnet</label>
           </div>
         </Field>

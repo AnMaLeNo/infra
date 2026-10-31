@@ -61,9 +61,10 @@ export function RunDetail({ file, host, onClose }: { file: string; host: Host | 
                 {run.skills && <><dt>Skills</dt><dd>{run.skills.join(', ')}</dd></>}
                 {run.git && <><dt>Config git</dt><dd>{run.git.ok ? (run.git.committed ? `commit ${run.git.commit ?? ''} ${run.git.pushed ? 'poussé' : 'non poussé'}` : 'rien à committer') : `erreur : ${run.git.error}`}</dd></>}
               </dl>
-              {run.status === 'bloqué' && run.needs_human && (
+              {run.needs_human && (
                 <>
-                  <h3>Besoin humain</h3>
+                  <h3>{run.status === 'bloqué' ? 'Besoin humain' : 'Reste à un humain'}</h3>
+                  {run.status !== 'bloqué' && <p className="small muted" style={{ margin: '0 0 6px' }}>Le run est {run.status} : rien ne manque à infra, mais Claude a relevé ceci pour toi (aussi visible sur la carte, dans « remarques »).</p>}
                   <div className="box warn">{run.needs_human}</div>
                 </>
               )}
