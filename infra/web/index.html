@@ -7,11 +7,17 @@
 <style>
   :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --fg:#e6e6e6; --muted:#8b93a5; --ok:#3fb950; --ko:#f85149; --warn:#d29922; --acc:#58a6ff; }
   * { box-sizing:border-box } body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--fg) }
-  header { display:flex; gap:16px; align-items:baseline; padding:14px 20px; border-bottom:1px solid var(--line) }
+  header { display:flex; flex-wrap:wrap; gap:16px; align-items:baseline; padding:14px 20px; border-bottom:1px solid var(--line) }
   header h1 { margin:0; font-size:18px } header .muted { color:var(--muted) }
-  main { display:grid; grid-template-columns: 1fr 380px; gap:16px; padding:16px 20px }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr } }
-  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px }
+  /* minmax(0,1fr) : sinon la colonne prend la largeur minimale du tableau et la page déborde à droite */
+  main { display:grid; grid-template-columns: minmax(0,1fr) 380px; gap:16px; padding:16px 20px }
+  @media (max-width: 1400px) { main { grid-template-columns: minmax(0,1fr) 300px } }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; min-width:0; overflow-x:auto }
+  td a, td code { overflow-wrap:anywhere }
+  .actions { display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap } .actions button { white-space:nowrap }
+  @media (max-width: 900px) { th.sec, td.sec { display:none } }
+  .changed { outline:2px solid var(--warn); outline-offset:1px } .changed-note { color:var(--warn) }
   table { width:100%; border-collapse:collapse } th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top }
   th { color:var(--muted); font-weight:500 }
   .tag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:12px; border:1px solid var(--line); color:var(--muted) }
@@ -44,7 +50,7 @@
 <main>
   <section class="panel">
     <table>
-      <thead><tr><th></th><th>Projet</th><th>Service</th><th>Expose</th><th>Previews</th><th>URLs</th><th>Dernier run</th><th></th><th></th><th></th></tr></thead>
+      <thead><tr><th></th><th>Projet</th><th class="sec">Service</th><th>Expose</th><th class="sec">Previews</th><th>URLs</th><th class="sec">Dernier run</th><th></th></tr></thead>
       <tbody id="projects"></tbody>
     </table>
     <p class="help">Modifier une entrée écrit <code>registry.yaml</code>, rien de plus. <b>Lancer Claude</b> demande explicitement un run (<code>claude -p</code> + skills du projet) ; le runner les exécute un par un. Le point : vert = conforme au dernier run réussi, orange = modifié depuis le dernier run, rouge = dernier run en échec ou bloqué (statut déclaré par Claude via le tool <code>run_report</code>), bleu = run demandé / en cours.</p>
@@ -58,7 +64,7 @@
 
 <section class="panel">
   <div class="row"><h2 style="margin:0">Services partagés</h2><span class="muted" style="flex:1; margin-left:12px">un seul exemplaire par hôte (broker MQTT, base…) ; les projets le consomment via <code>uses:</code></span><button onclick="openSharedEditor()">+ Déclarer un service</button></div>
-  <table><thead><tr><th></th><th>Nom</th><th>Type</th><th>Écoute</th><th>Auth</th><th>Consommé par</th><th>Dernier run</th><th></th><th></th><th></th></tr></thead>
+  <table><thead><tr><th></th><th>Nom</th><th class="sec">Type</th><th>Écoute</th><th class="sec">Auth</th><th>Consommé par</th><th class="sec">Dernier run</th><th></th></tr></thead>
     <tbody id="shared"></tbody></table>
 </section>
 
@@ -68,7 +74,7 @@
     <label>Nom <span class="muted">(a-z0-9-, = alias DNS sur traefik-net)</span></label><input id="s_name" required pattern="[a-z0-9][a-z0-9\-]*" placeholder="mqtt">
     <label>Type <span class="muted">(ce que c'est, pas comment)</span></label><input id="s_kind" required placeholder="mqtt-broker, postgres…">
     <div class="row">
-      <div><label>Écoute sur l'hôte <span class="muted">(jamais 0.0.0.0)</span></label><div style="display:flex; gap:16px; padding:8px 0; white-space:nowrap"><label style="display:flex; gap:6px; align-items:center" title="Clients sans Tailscale (ESP, autres machines du réseau local) ; exige lan_ip dans host.yaml"><input type="checkbox" id="s_lan"> LAN</label><label style="display:flex; gap:6px; align-items:center" title="Depuis le tailnet (IP Tailscale de l'hôte)"><input type="checkbox" id="s_tailnet" checked> tailnet</label></div></div>
+      <div><label>Écoute sur l'hôte <span class="muted">(jamais 0.0.0.0)</span></label><div id="s_listen" style="display:flex; gap:16px; padding:8px 0; white-space:nowrap"><label style="display:flex; gap:6px; align-items:center" title="Clients sans Tailscale (ESP, autres machines du réseau local) ; exige lan_ip dans host.yaml"><input type="checkbox" id="s_lan"> LAN</label><label style="display:flex; gap:6px; align-items:center" title="Depuis le tailnet (IP Tailscale de l'hôte)"><input type="checkbox" id="s_tailnet" checked> tailnet</label></div></div>
       <div><label>Port publié <span class="muted">(vide = conteneurs seulement)</span></label><input id="s_port" type="number" min="1" max="65535" placeholder="1883"></div>
     </div>
     <div class="row">
@@ -77,6 +83,7 @@
       <div><label>Activé</label><select id="s_enabled"><option value="true">oui</option><option value="false">non</option></select></div>
     </div>
     <p class="help" id="sh_decided"></p>
+    <p class="help changed-note" id="sh_changed" hidden></p>
     <label>Notes <span class="muted">(clients hors Docker, topics critiques, contraintes)</span></label><textarea id="s_notes" rows="3"></textarea>
     <p class="help">Ces choix sont les tiens (les clients externes en dépendent). Le <i>comment</i> (image, conteneur, compose dans <code>shared/&lt;nom&gt;/</code>) est écrit par Claude au run.</p>
     <div class="row" style="margin-top:12px">
@@ -127,6 +134,7 @@
       <div><label>Entrées suppl. <span class="muted">(label=expose, …)</span></label><input id="f_entries" placeholder="dashboard=public" title="Autres hostnames du même container, vers d'autres ports (constatés par Claude) : <label>.<zone> → none|private|public"></div>
     </div>
     <p class="help" id="ed_decided"></p>
+    <p class="help changed-note" id="ed_changed" hidden></p>
     <div class="row">
       <div><label>Branche / ref</label><input id="f_ref" value="main"></div>
       <div><label>Uses <span class="muted">(services partagés, séparés par ,)</span></label><input id="f_uses" placeholder="mqtt"></div>
@@ -164,33 +172,29 @@ async function load() {
   $('#projects').innerHTML = Object.entries(projects).map(([name, p]) => {
     const e = p.entry, busy = p.queued || p.running;
     const dot = busy ? 'busy' : (p.changed ? 'pending' : (p.last_ok ? 'ok' : 'ko'));
-    const title = p.running ? 'run en cours' : p.queued ? 'run demandé, en attente' : p.changed ? (p.never_run ? 'jamais lancé' : 'modifié depuis le dernier run') : (p.last_ok ? 'conforme au dernier run' : p.last_status === 'bloqué' ? 'dernier run bloqué : Claude attend quelque chose d\'un humain (voir Historique)' : 'dernier run en échec');
+    const title = p.running ? 'run en cours' : p.queued ? 'run demandé, en attente' : p.changed ? (p.never_run ? 'jamais lancé' : p.changed_fields?.length ? 'modifié depuis le dernier run : ' + p.changed_fields.join(', ') : 'modèle de configuration mis à jour depuis le dernier run : à relancer') : (p.last_ok ? 'conforme au dernier run' : p.last_status === 'bloqué' ? 'dernier run bloqué : Claude attend quelque chose d\'un humain (voir Historique)' : 'dernier run en échec');
     const urls = Object.entries(p.urls).map(([k, u]) => `<a href="${u}" target="_blank">${u.replace('https://','')}</a>`).join('<br>');
     return `<tr>
       <td><span class="dot ${dot}" title="${title}"></span></td>
       <td><b>${name}</b>${e.enabled ? '' : ' <span class="tag">désactivé</span>'}${e.pr_proposed ? ` <a class="tag pr" href="${e.pr_proposed}" target="_blank" title="Le repo n'avait ni Dockerfile ni compose : Claude les a écrits, a ouvert cette PR et déploie depuis sa branche (ref = ${e.ref}). Après merge, le prochain run repasse ref sur main.">PR Docker en attente ↗</a>` : ''}<br><a class="muted" href="${e.repo}" target="_blank">${e.repo.replace('https://github.com/','')}</a></td>
-      <td>${e.service || '<span class="muted" title="Claude choisit compose ou static au run">auto</span>'}${e.container || e.port ? `<br><span class="muted" title="constaté par Claude">${e.container || '?'}:${e.port ?? '?'}</span>` : ''}</td><td><span class="tag ${e.expose}">${e.expose}</span>${Object.entries(e.entries || {}).map(([l, x]) => `<br><span class="tag ${x}" title="entrée supplémentaire ${l} → port ${e.entry_ports?.[l] ?? '? (constaté par Claude au run)'}">${l}: ${x}</span>`).join('')}</td><td>${e.previews === 'none' ? '—' : `<span class="tag ${e.previews}">${e.previews}</span>`}</td>
+      <td class="sec">${e.service || '<span class="muted" title="Claude choisit compose ou static au run">auto</span>'}${e.container || e.port ? `<br><span class="muted" title="constaté par Claude">${e.container || '?'}:${e.port ?? '?'}</span>` : ''}</td><td><span class="tag ${e.expose}">${e.expose}</span>${Object.entries(e.entries || {}).map(([l, x]) => `<br><span class="tag ${x}" title="entrée supplémentaire ${l} → port ${e.entry_ports?.[l] ?? '? (constaté par Claude au run)'}">${l}: ${x}</span>`).join('')}</td><td class="sec">${e.previews === 'none' ? '—' : `<span class="tag ${e.previews}">${e.previews}</span>`}</td>
       <td>${urls || '—'}</td>
-      <td class="muted">${p.last_at ? new Date(p.last_at).toLocaleString('fr-FR') : '—'}</td>
-      <td class="right"><button class="${p.changed && !busy ? 'primary' : ''}" ${busy ? 'disabled' : ''} onclick='requestRun(${js(name)})' title="Lance claude -p sur ce projet avec ses skills">${p.running ? 'En cours…' : p.queued ? 'En attente' : 'Lancer Claude'}</button></td>
-      <td class="right"><button onclick='openEditor(${js(name)})'>Modifier</button></td>
-      <td class="right"><button onclick='openHistory(${js(name)})' title="Versions de la config + tous les runs, avec leurs logs">Historique</button></td></tr>`;
-  }).join('') || '<tr><td colspan="10" class="muted">Aucun projet. Ajoute-en un.</td></tr>';
+      <td class="muted sec">${p.last_at ? new Date(p.last_at).toLocaleString('fr-FR') : '—'}</td>
+      <td><div class="actions"><button class="${p.changed && !busy ? 'primary' : ''}" ${busy ? 'disabled' : ''} onclick='requestRun(${js(name)})' title="Lance claude -p sur ce projet avec ses skills">${p.running ? 'En cours…' : p.queued ? 'En attente' : 'Lancer Claude'}</button><button onclick='openEditor(${js(name)})'>Modifier</button><button onclick='openHistory(${js(name)})' title="Versions de la config + tous les runs, avec leurs logs">Historique</button></div></td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="muted">Aucun projet. Ajoute-en un.</td></tr>';
   $('#shared').innerHTML = Object.entries(shared).map(([name, p]) => {
     const e = p.entry, busy = p.queued || p.running;
     const dot = busy ? 'busy' : (p.changed ? 'pending' : (p.last_ok ? 'ok' : 'ko'));
-    const title = p.running ? 'run en cours' : p.queued ? 'run demandé, en attente' : p.changed ? (p.never_run ? 'jamais lancé' : 'modifié depuis le dernier run') : (p.last_ok ? 'conforme au dernier run' : p.last_status === 'bloqué' ? 'dernier run bloqué (voir Historique)' : 'dernier run en échec');
+    const title = p.running ? 'run en cours' : p.queued ? 'run demandé, en attente' : p.changed ? (p.never_run ? 'jamais lancé' : p.changed_fields?.length ? 'modifié depuis le dernier run : ' + p.changed_fields.join(', ') : 'modèle de configuration mis à jour depuis le dernier run : à relancer') : (p.last_ok ? 'conforme au dernier run' : p.last_status === 'bloqué' ? 'dernier run bloqué (voir Historique)' : 'dernier run en échec');
     const listen = e.port ? `${e.listen.join(' + ')} : ${e.port}` : 'conteneurs seulement';
     return `<tr>
       <td><span class="dot ${dot}" title="${title}"></span></td>
       <td><b>${name}</b>${e.enabled ? '' : ' <span class="tag">désactivé</span>'}${e.image ? `<br><span class="muted" title="constaté par Claude">${e.image}</span>` : ''}</td>
-      <td>${e.kind}</td><td>${listen}</td><td>${e.auth}</td>
+      <td class="sec">${e.kind}</td><td>${listen}</td><td class="sec">${e.auth}</td>
       <td>${p.users.length ? p.users.map(u => `<code>${u}</code>`).join(' ') : '<span class="muted">personne</span>'}</td>
-      <td class="muted">${p.last_at ? new Date(p.last_at).toLocaleString('fr-FR') : '—'}</td>
-      <td class="right"><button class="${p.changed && !busy ? 'primary' : ''}" ${busy ? 'disabled' : ''} onclick='requestSharedRun(${js(name)})' title="Lance claude -p sur ce service avec le skill shared-service">${p.running ? 'En cours…' : p.queued ? 'En attente' : 'Lancer Claude'}</button></td>
-      <td class="right"><button onclick='openSharedEditor(${js(name)})'>Modifier</button></td>
-      <td class="right"><button onclick='openHistory(${js(name)}, true)'>Historique</button></td></tr>`;
-  }).join('') || '<tr><td colspan="10" class="muted">Aucun service partagé déclaré. Un projet qui en consomme un (<code>uses:</code>) restera bloqué tant qu\'il n\'est pas déclaré ici.</td></tr>';
+      <td class="muted sec">${p.last_at ? new Date(p.last_at).toLocaleString('fr-FR') : '—'}</td>
+      <td><div class="actions"><button class="${p.changed && !busy ? 'primary' : ''}" ${busy ? 'disabled' : ''} onclick='requestSharedRun(${js(name)})' title="Lance claude -p sur ce service avec le skill shared-service">${p.running ? 'En cours…' : p.queued ? 'En attente' : 'Lancer Claude'}</button><button onclick='openSharedEditor(${js(name)})'>Modifier</button><button onclick='openHistory(${js(name)}, true)'>Historique</button></div></td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="muted">Aucun service partagé déclaré. Un projet qui en consomme un (<code>uses:</code>) restera bloqué tant qu\'il n\'est pas déclaré ici.</td></tr>';
   $('#runs').innerHTML = runs.map(r => `<tr onclick="showRun('${r.file}')" style="cursor:pointer">
       <td><span class="dot ${r.ok ? 'ok' : 'ko'}"></span>${r.project}${r.dry ? ' <span class="tag">dry</span>' : ''}${r.status && r.status !== 'ok' ? ` <span class="tag" title="statut déclaré par Claude (run_report)">${r.status}</span>` : ''}</td>
       <td class="muted">${new Date(r.started).toLocaleString('fr-FR')}</td>
@@ -201,6 +205,18 @@ function gitNotice(res) {
   const g = res && res.git; const w = $('#gitwarn');
   if (!g || g.ok) { w.hidden = true; return; }
   w.hidden = false; w.textContent = '⚠ config non poussée : ' + (g.error || 'erreur git');
+}
+// Champs modifiés depuis le dernier run (changed_fields de l'API) : entourés en orange dans la fenêtre Modifier ;
+// ceux sans champ de saisie (legacy, data, expose_ports…) sont seulement nommés.
+const PROJECT_FIELDS = { repo: '#f_repo', service: '#f_service', expose: '#f_expose', previews: '#f_previews', domain: '#f_domain', entries: '#f_entries', ref: '#f_ref', uses: '#f_uses', enabled: '#f_enabled', env: '#f_env' };
+const SHARED_FIELDS = { kind: '#s_kind', listen: '#s_listen', port: '#s_port', auth: '#s_auth', data: '#s_data', enabled: '#s_enabled' };
+function markChanged(dlg, map, p, note) {
+  dlg.querySelectorAll('.changed').forEach(el => el.classList.remove('changed'));
+  const fields = p?.changed_fields || [], other = [];
+  for (const f of fields) { const el = map[f] && $(map[f]); if (el) el.classList.add('changed'); else other.push(f); }
+  const n = $(note); n.hidden = !(p?.changed && !p.never_run);
+  n.textContent = fields.length ? `Modifié depuis le dernier run : ${fields.join(', ')}${other.length ? ` (${other.join(', ')} : pas de champ ici, voir registry.yaml)` : ''}.`
+    : 'Aucun champ modifié, mais le modèle de configuration a évolué depuis le dernier run (nouveau champ) : relance Claude pour l\'appliquer.';
 }
 async function requestSharedRun(name) { await api('/api/shared/' + name + '/run', { method: 'POST' }); load(); }
 function openSharedEditor(name) {
@@ -214,6 +230,7 @@ function openSharedEditor(name) {
   $('#sh_decided').textContent = Object.keys(decided).length
     ? 'Constaté par Claude au dernier run : ' + Object.entries(decided).map(([k, v]) => `${k} = ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')
     : 'Rien encore constaté par Claude (image, conteneur… seront écrits par lui au premier run).';
+  markChanged(sheditor, SHARED_FIELDS, name && SHARED[name], '#sh_changed');
   $('#sh_delete').style.visibility = name ? 'visible' : 'hidden'; $('#sherr').textContent = '';
   sheditor.showModal();
 }
@@ -302,6 +319,7 @@ function openEditor(name) {
     ? 'Constaté par Claude au dernier run : ' + Object.entries(decided).map(([k, v]) => `${k} = ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')
     : 'Rien encore constaté par Claude (container, port… seront écrits par lui au premier run).';
   $('#f_enabled').value = String(e.enabled ?? true); $('#f_env').value = String(e.env ?? false); $('#f_notes').value = e.notes || '';
+  markChanged(editor, PROJECT_FIELDS, name && PROJECTS[name], '#ed_changed');
   $('#btn_delete').style.visibility = name ? 'visible' : 'hidden'; $('#ederr').textContent = '';
   editor.showModal();
 }

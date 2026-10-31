@@ -24,11 +24,33 @@ from .models import Project
 ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,mcp__infra"
 
 
+# Champs de l'intention purement informatifs (pour l'humain) : changer une note ne rend pas le projet « modifié ».
+HASH_IGNORED = ("notes",)
+
+
+def _hashed(entry) -> dict:
+    return {k: v for k, v in entry.intent().items() if k not in HASH_IGNORED}
+
+
 def _hash(entry) -> str:
-    """Empreinte de l'intention (Project ou Shared, sans les constats du LLM) ; `absent` si retiré."""
+    """Empreinte de l'intention (Project ou Shared, sans les constats du LLM ni les notes) ; `absent` si retiré."""
     if entry is None:
         return "absent"
-    return hashlib.sha256(json.dumps(entry.intent(), sort_keys=True).encode()).hexdigest()[:16]
+    return hashlib.sha256(json.dumps(_hashed(entry), sort_keys=True).encode()).hexdigest()[:16]
+
+
+def changed_fields(entry, st: dict) -> list[str]:
+    """Champs de l'intention qui diffèrent de l'entrée du dernier run (`st` = état enregistré par mark_applied).
+    Vide si jamais lancé. L'entrée enregistrée est relue dans le modèle courant : un champ ajouté depuis
+    au modèle apparaît avec sa valeur par défaut, donc n'est signalé que s'il a été rempli."""
+    if entry is None or not st or st.get("entry") is None:
+        return []
+    try:
+        before = _hashed(type(entry)(**st["entry"]))
+    except (TypeError, ValueError):
+        return []
+    now = _hashed(entry)
+    return sorted(k for k in set(before) | set(now) if before.get(k) != now.get(k))
 
 
 def build_prompt(name: str, prj: Project | None, previous: dict | None) -> str:

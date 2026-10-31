@@ -53,6 +53,7 @@ def projects():
         st = state.get(name, {})
         out[name] = {"entry": prj.model_dump(), "decided": prj.decided(), "urls": t.urls, "skills": skills.for_project(prj),
                      "changed": st.get("hash") != runner._hash(prj), "never_run": "hash" not in st,
+                     "changed_fields": runner.changed_fields(prj, st),
                      "queued": name in queued, "running": running == name,
                      "last_ok": st.get("ok"), "last_status": st.get("status"), "last_at": st.get("at")}
     return out
@@ -84,6 +85,7 @@ def shared_services():
         st = state.get(key, {})
         out[name] = {"entry": svc.model_dump(), "decided": svc.decided(), "users": config.users_of(name), "key": key,
                      "changed": st.get("hash") != runner._hash(svc), "never_run": "hash" not in st,
+                     "changed_fields": runner.changed_fields(svc, st),
                      "queued": key in queued, "running": running == key,
                      "last_ok": st.get("ok"), "last_status": st.get("status"), "last_at": st.get("at")}
     return out

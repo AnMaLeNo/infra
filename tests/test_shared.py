@@ -121,3 +121,14 @@ def test_api_shared(env):
     assert c.delete("/api/shared/pg").status_code == 200
     h = c.get("/api/shared/pg/history").json()
     assert [e["entry"] is None for e in h["config"]] == [False, True]
+
+
+def test_shared_notes_ignored_and_changed_fields(env):
+    from infra import runner
+
+    state = runner.load_state()
+    runner.mark_applied(state, "shared.mqtt", config.shared_service("mqtt"), ok=True)
+    config.set_shared_fields("mqtt", notes="2 ESP sur le LAN")
+    assert "shared.mqtt" not in runner.changed_since_last_run(runner.load_state())
+    config.set_shared_fields("mqtt", port=1884)
+    assert runner.changed_fields(config.shared_service("mqtt"), state["shared.mqtt"]) == ["port"]
