@@ -6,14 +6,17 @@ pub mod dns;
 pub mod doctor;
 pub mod gitsync;
 pub mod history;
+pub mod mcp;
 pub mod models;
 pub mod paths;
 pub mod previews;
 pub mod render;
+pub mod runner;
 pub mod secrets;
 pub mod skills;
 pub mod stack;
 pub mod state;
+pub mod tools;
 pub mod tunnel;
 pub mod util;
 
