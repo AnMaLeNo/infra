@@ -13,6 +13,7 @@ use crate::{config, paths, util};
 pub const HASH_IGNORED: [&str; 1] = ["notes"];
 
 /// Projet ou service partagé : ce que hash et prompt voient de la même façon.
+#[allow(clippy::large_enum_variant)]
 pub enum Entry {
     Project(crate::models::Project),
     Shared(crate::models::Shared),

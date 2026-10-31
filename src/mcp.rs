@@ -41,7 +41,7 @@ fn arg_bool(a: &Map<String, Value>, k: &str) -> bool {
     a.get(k).and_then(Value::as_bool).unwrap_or(false)
 }
 
-fn arg_fields<'a>(a: &'a Map<String, Value>) -> Result<&'a Map<String, Value>> {
+fn arg_fields(a: &Map<String, Value>) -> Result<&Map<String, Value>> {
     a.get("fields").and_then(Value::as_object).ok_or_else(|| anyhow::anyhow!("argument `fields` (objet) manquant"))
 }
 

@@ -204,7 +204,7 @@ fn run_inner(name: &str, prompt: &str, skill_list: Vec<String>, previous: Option
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     let secret_values: Vec<String> = ienv.values().cloned().collect();
-    let result_ev = stdout.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(|ev| ev.get("type").and_then(Value::as_str) == Some("result")).last();
+    let result_ev = stdout.lines().rev().filter_map(|l| serde_json::from_str::<Value>(l).ok()).find(|ev| ev.get("type").and_then(Value::as_str) == Some("result"));
     let result_text = match &result_ev {
         Some(ev) => {
             rec["cost_usd"] = ev.get("total_cost_usd").cloned().unwrap_or(Value::Null);
