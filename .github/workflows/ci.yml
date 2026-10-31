@@ -20,24 +20,25 @@ jobs:
       - run: cargo test
       - run: docker compose -f stack/traefik/docker-compose.yml config -q
         env: { TAILSCALE_IP: 100.64.0.1, STACK_STATE: /tmp, CF_API_TOKEN: x, PRIVATE_ZONE: pi.example.com, ACME_EMAIL: a@b.c, PUBLIC_INGRESS: cloudflare-tunnel }
-  # Binaires pour install.sh (x86_64 natif, aarch64 cross-compilé avec le gcc Debian) ; attachés à la release du tag.
+  # Binaires pour install.sh : compilés dans rust:1-bookworm (glibc 2.36, celle de Debian 12 sur le Pi ; ubuntu-latest a
+  # une glibc trop récente), x86_64 natif + aarch64 cross-compilé avec le gcc Debian ; attachés à la release du tag.
   binaries:
     needs: test
     runs-on: ubuntu-latest
+    container: rust:1-bookworm
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+        with: { node-version: 22 }
       - run: npm ci --no-audit --no-fund && npm run build
         working-directory: web
-      - uses: dtolnay/rust-toolchain@stable
-        with: { targets: aarch64-unknown-linux-gnu }
+      - run: rustup target add aarch64-unknown-linux-gnu && apt-get update -qq && apt-get install -y -qq gcc-aarch64-linux-gnu libc6-dev-arm64-cross
       - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc-aarch64-linux-gnu libc6-dev-arm64-cross
       - run: cargo build --release && cp target/release/infra infra-x86_64
       - run: cargo build --release --target aarch64-unknown-linux-gnu && cp target/aarch64-unknown-linux-gnu/release/infra infra-aarch64
         env: { CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc }
+      - run: objdump -T infra-aarch64 | grep -o "GLIBC_[0-9.]*" | sort -Vu | tail -1
       - uses: actions/upload-artifact@v4
         with: { name: infra-binaries, path: "infra-*" }
       - uses: softprops/action-gh-release@v2
