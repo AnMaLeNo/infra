@@ -16,7 +16,7 @@ registry.yaml modifié (UI web ou git)  →  rien ne se passe
         │
         ▼  bouton « Lancer Claude » (ou `infra enqueue <P>`)
  runner (infra watch) : prend la demande, un projet à la fois, choisit les skills
-        │   skills/service/<service>, skills/expose/<expose>, skills/previews, skills/migrate-legacy…
+        │   skills/service/<service>, skills/expose/<expose>, skills/previews…
         ▼
  claude -p  « amène le projet X à l'état voulu »  + SKILL.md  + MCP `infra`
         │   → constate l'état réel, fait le nécessaire (tools MCP, docker compose, git, PR si besoin), vérifie
@@ -75,7 +75,7 @@ README.md             ← tu es ici
 docs/                 conventions (chemins, réseaux, labels, noms), architecture, décisions
 skills/               1 SKILL.md par opération, écrits pour un LLM
   expose/{none,private,public}/   service/{compose,static}/   previews/   undeploy/
-  bootstrap-host/   agent-account/   secrets/   migrate-legacy/
+  bootstrap-host/   agent-account/   secrets/
 stack/                compose des services d'infra de l'outil : traefik/, cloudflared/, ui/ (les services partagés entre projets sont dans shared.yaml)
 src/                  l'outil (Rust, un binaire) : CLI, serveur MCP (`infra mcp`), API, runner, éditeur
 web/                  front (React/Vite), compilé dans web/dist puis embarqué dans le binaire

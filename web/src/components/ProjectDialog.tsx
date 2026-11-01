@@ -21,7 +21,7 @@ export function ProjectDialog({ name, view, sharedNames, onClose, onSaved }: {
     repo: base.repo, ref: base.ref, enabled: base.enabled, service: base.service ?? '', expose: base.expose,
     domain: base.domain ?? '', previews: base.previews, uses: listToText(base.uses), env: base.env,
     expose_ports: listToText(base.expose_ports), data: listToText(base.data), entries: mapToText(base.entries),
-    legacy: base.legacy ?? '', notes: base.notes,
+    notes: base.notes,
   })
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -39,7 +39,7 @@ export function ProjectDialog({ name, view, sharedNames, onClose, onSaved }: {
       repo: f.repo.trim(), ref: f.ref.trim() || 'main', enabled: f.enabled, service: f.service || null, expose: f.expose,
       domain: f.domain.trim() || null, previews: f.previews, uses: textToList(f.uses), env: f.env,
       expose_ports: textToList(f.expose_ports), data: textToList(f.data), entries: textToMap(f.entries),
-      legacy: f.legacy.trim() || null, notes: f.notes,
+      notes: f.notes,
     }
     setBusy(true)
     try {
@@ -152,9 +152,6 @@ export function ProjectDialog({ name, view, sharedNames, onClose, onSaved }: {
             <label title="Décoché : Claude arrête et retire le déploiement au prochain run (skill undeploy)"><input type="checkbox" checked={f.enabled} onChange={(e) => set('enabled', e.target.checked)} /> Projet actif</label>
             <label title="Le projet lit secrets/projects/<nom>.env (chiffré sops), déchiffré en .env au déploiement"><input type="checkbox" checked={f.env} onChange={(e) => set('env', e.target.checked)} /> A un fichier .env secret</label>
           </div>
-        </Field>
-        <Field label="Legacy" hint="ancienne installation à remplacer" changed={changed.has('legacy')} title="Description de ce qui tourne déjà hors infra (service systemd, conteneur à la main…) et autorisation de bascule ; consigne pour Claude" full>
-          <textarea value={f.legacy} onChange={(e) => set('legacy', e.target.value)} placeholder="ex. service systemd « monapp » sur :8080, BASCULE AUTORISÉE une fois le conteneur sain" />
         </Field>
         <Field label="Notes" hint="pour les humains et Claude ; ne compte pas comme une modification" changed={changed.has('notes')} full>
           <textarea value={f.notes} onChange={(e) => set('notes', e.target.value)} />

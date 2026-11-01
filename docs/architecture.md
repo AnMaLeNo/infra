@@ -104,7 +104,6 @@ infra/
 │   ├── undeploy/SKILL.md     # enabled:false ⇒ arrêter, garder ou purger les données
 │   ├── bootstrap-host/SKILL.md   # OS vierge → hôte prêt (Tailscale, Docker, Traefik, cloudflared…)
 │   ├── agent-account/SKILL.md    # créer un compte pour un agent IA (§6)
-│   ├── migrate-legacy/SKILL.md   # faire passer un service « ancien style » dans le modèle
 │   └── secrets/SKILL.md      # ajouter/lire un secret
 ├── hosts/
 │   ├── pi/                   # compose de l'infra partagée : traefik/, cloudflared/, mosquitto/, netdata/
@@ -160,7 +159,7 @@ Les comptes `agent` et `alpage` actuels sont migrés puis supprimés.
 
 ## 9. Plan de migration (sans casser ce qui tourne)
 
-0. Créer le repo, docs, skills, `registry.yaml` reflétant l'existant (`legacy: true` sur les services non migrés).
+0. Créer le repo, docs, skills, `registry.yaml` reflétant l'existant.
 1. Pi : Traefik + nouveau cloudflared (tunnel recréé en mode « config dans git », ingress → traefik) **à côté** de l'existant ; DNS `*.pi.antoine42.com` ; suppression du wildcard mort. Coupure de catacombes ≈ 1 min lors du basculement du CNAME.
 2. Apps Docker existantes (fan, power, ApplyBoard, site naturo, projet-web) : retirer les ports publiés, rejoindre `traefik-net` ⇒ `private`. Mosquitto lié à l'IP Tailscale. Supprimer les zombies (alpage sur le Pi, camofox si inutile).
 3. Conteneuriser les services systemd : catacombes (→ `public`), sous-la-barre, notes, questionnaire (tunnel persistant au lieu de trycloudflare). IBKR / Unused / piproxy : conteneurisation étudiée au cas par cas, sinon documentés comme exceptions `expose: none`.

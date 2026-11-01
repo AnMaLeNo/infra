@@ -24,7 +24,6 @@ export interface Project {
   entries: Record<string, string>
   entry_ports: Record<string, number>
   pr_proposed: string | null
-  legacy: string | null
   notes: string
 }
 
@@ -211,7 +210,7 @@ export const SHARED_LLM_DECIDED: (keyof Shared)[] = ['image', 'container', 'comp
 export const PROJECT_DEFAULTS: Project = {
   repo: '', ref: 'main', enabled: true, service: null, expose: 'private', domain: null, container: null, port: null,
   previews: 'none', uses: [], env: false, expose_ports: [], data: [], compose_file: 'docker-compose.yml', build: null,
-  static_dir: '.', consumers: {}, entries: {}, entry_ports: {}, pr_proposed: null, legacy: null, notes: '',
+  static_dir: '.', consumers: {}, entries: {}, entry_ports: {}, pr_proposed: null, notes: '',
 }
 
 export const SHARED_DEFAULTS: Shared = {

@@ -11,7 +11,7 @@ Le service partagé `<S>` déclaré dans `shared.yaml` existe en **un seul exemp
 - Le conteneur est sur `traefik-net` avec l'alias réseau `<S>` (`shared_status.alias_ok`) : les projets le joignent en `<S>:<port interne>`.
 - Si `port` est déclaré : publié **uniquement** sur les IPs de `listen` (`lan` → chaque IP de `host.yaml: lan_ip`, une ou plusieurs car un hôte peut avoir eth0 et wlan0 ; `tailnet` → `tailscale_ip`), une ligne `ports:` par IP (`"<ip>:<port>:<port>"`). `shared_status.listening` == `listen_wanted`, `on_all_interfaces` faux. Si `port` est absent : aucun `ports:`.
 - `auth: anonymous` → accès sans identifiants (choix humain, ne le « corrige » pas) ; `auth: users` → identifiants dans `secrets/shared/<S>.env` (noms via `secrets_keys`), jamais inventés.
-- `data: true` → données en bind mount sous `/srv/shared/<S>/data` (pas de volume nommé). Si un exemplaire legacy existe (volume nommé, autre compose), ses données sont **migrées** avant la bascule (ex. messages retenus d'un broker, base) et l'ancien est arrêté — seulement si `notes`/`legacy` t'y autorisent, sinon `bloqué`.
+- `data: true` → données en bind mount sous `/srv/shared/<S>/data` (pas de volume nommé). Si un exemplaire legacy existe (volume nommé, autre compose), ses données sont **migrées** avant la bascule (ex. messages retenus d'un broker, base) et l'ancien est arrêté — seulement si `notes` t'y autorise explicitement, sinon `bloqué`.
 - `shared.yaml` contient tes constats via `shared_set` : `image`, `container`, `compose_file` si différent.
 - `enabled: false` ou entrée retirée : `docker compose -p shared-<S> down` (sans `-v`), données conservées, fichiers `shared/<S>/` laissés.
 
