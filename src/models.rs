@@ -170,8 +170,6 @@ pub struct Project {
     #[serde(default)]
     pub pr_proposed: Option<String>,
     #[serde(default)]
-    pub legacy: Option<String>,
-    #[serde(default)]
     pub notes: String,
 }
 

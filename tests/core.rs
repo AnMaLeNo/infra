@@ -15,16 +15,16 @@ fn hashes_identical_to_python_version() {
     let host = config::host().unwrap();
     let h = |n: &str| state::hash(Some(&Entry::Project(reg.projects[n].clone())));
     let deps = |n: &str| Value::Object(state::host_deps(&Entry::Project(reg.projects[n].clone()), &host));
-    // sans dépendance à l'hôte (expose none) : identique à la version Python
+    // sans dépendance à l'hôte (expose none) : l'empreinte ne dépend que de l'entrée
     assert_eq!(deps("unused"), json!({}));
-    assert_eq!(h("unused"), "16a3dc568671a148");
+    assert_eq!(h("unused"), "5fe5e1425db42fd1");
     // avec : l'empreinte inclut les valeurs de host.yaml dont dépend le rendu (stable tant qu'elles ne bougent pas)
     assert_eq!(deps("catacombes"), json!({"public_zone": "antoine42.com", "public_ingress": "cloudflare-tunnel"}));
-    assert_eq!(h("catacombes"), "6ed2241c03db1783");
+    assert_eq!(h("catacombes"), "589049b6829538f4");
     assert_eq!(deps("fan-controller"), json!({"private_zone": "pi.antoine42.com", "tailscale_ip": "100.72.6.43"}));
-    assert_eq!(h("fan-controller"), "55870c9cbd55ad3d");
-    assert_eq!(h("site-client"), "c0746fbc108b0a3b");
-    assert_eq!(h("immich"), "925a8491e359984e");
+    assert_eq!(h("fan-controller"), "984de928478d8e80");
+    assert_eq!(h("site-client"), "a8fb4a28b54b93bd");
+    assert_eq!(h("immich"), "af00563d638070e5");
     let mqtt = config::shared_service("mqtt").unwrap();
     assert_eq!(
         Value::Object(state::host_deps(&Entry::Shared(mqtt.clone()), &host)),
@@ -44,7 +44,7 @@ fn dump_decided_and_non_default_match_pydantic() {
     let mut keys: Vec<&String> = nd.keys().collect();
     keys.sort();
     assert_eq!(keys, ["consumers", "container", "env", "port", "repo", "service", "uses"]);
-    assert_eq!(fan.dump().len(), 22);
+    assert_eq!(fan.dump().len(), 21);
     let mqtt = config::shared_service("mqtt").unwrap();
     assert_eq!(mqtt.decided().len(), 0);
     assert_eq!(mqtt.listen, ["lan", "tailnet"]);

@@ -9,7 +9,7 @@ Quand un run est demandé pour le projet `P` (bouton « Lancer Claude »), le ru
 | Situation | Skills |
 |---|---|
 | `enabled: false` (ou projet supprimé) | `undeploy/` |
-| `enabled: true` | `service/<P.service>/` (les deux `service/*` si `service` est absent : le LLM choisit et l'écrit via `registry_set`) + `expose/<P.expose>/` (+ `previews/` si `P.previews != none`) ; `migrate-legacy/` en plus si `legacy:` est renseigné |
+| `enabled: true` | `service/<P.service>/` (les deux `service/*` si `service` est absent : le LLM choisit et l'écrit via `registry_set`) + `expose/<P.expose>/` (+ `previews/` si `P.previews != none`) |
 
 | Service partagé `S` de `shared.yaml` (bouton « Lancer Claude » de la section Services partagés) | `shared-service/` (couvre aussi `enabled: false` / retiré) |
 

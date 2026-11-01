@@ -66,7 +66,7 @@ pub fn compose_override(project: &str, pr: Option<u64>) -> Result<Value> {
     if t.project.service.as_deref() != Some("static") && !t.compose_file().exists() {
         bail!(
             "pas de {} dans {} : ce projet n'est pas un `service: compose`. Écris un Dockerfile + docker-compose.yml \
-             (PR sur le repo, voir migrate-legacy) ou passe en `service: static`.",
+             (PR sur le repo, voir service/compose) ou passe en `service: static`.",
             t.project.compose_file,
             t.repo_dir().display()
         );

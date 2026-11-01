@@ -23,4 +23,4 @@ Repo de config cloné avec `--recursive` en `/srv/infra` ; clé age privée disp
 
 ## Pièges connus
 - Un wildcard DNS plus large (`*.<public_zone>`) qui pointe ailleurs rend les sous-domaines imprévisibles : signale-le.
-- Tailscale : si l'hôte publie déjà des ports sur `0.0.0.0` (legacy), `infra doctor` les liste — ce n'est pas bloquant, c'est le travail de `migrate-legacy`.
+- Tailscale : si l'hôte publie déjà des ports sur `0.0.0.0` (legacy), `infra doctor` les liste — ce n'est pas bloquant : ce qui tourne hors modèle relève de l'humain, infra ne fait pas de migrations.
