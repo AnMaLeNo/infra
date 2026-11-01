@@ -45,7 +45,30 @@ fn all_users() -> Vec<(String, PathBuf)> {
         .collect()
 }
 
+/// Script ForceCommand d'ai-github : n'exécute que `infra preview up|down …` (SSH_ORIGINAL_COMMAND), rien d'autre.
+pub const PREVIEW_ONLY: &str = "#!/bin/sh
+# Installé par `infra agents sync` : seule commande autorisée au compte ai-github (GitHub Actions).
+set -- $SSH_ORIGINAL_COMMAND
+case \"$1 $2 $3\" in
+  \"infra preview up\"|\"infra preview down\") shift; exec /usr/local/bin/infra \"$@\" ;;
+  *) echo \"ai-github : seul 'infra preview up|down <projet> <pr>' est autorisé\" >&2; exit 126 ;;
+esac
+";
+
+fn install_preview_only() -> Result<()> {
+    let p = "/usr/local/bin/infra-preview-only";
+    if std::fs::read_to_string(p).map(|cur| cur == PREVIEW_ONLY).unwrap_or(false) {
+        return Ok(());
+    }
+    let tmp = std::env::temp_dir().join("infra-preview-only");
+    std::fs::write(&tmp, PREVIEW_ONLY)?;
+    sudo(&["install", "-m", "0755", "-o", "root", "-g", "root", &tmp.to_string_lossy(), p])?;
+    let _ = std::fs::remove_file(&tmp);
+    Ok(())
+}
+
 pub fn sync(prune: bool) -> Result<IndexMap<String, String>> {
+    install_preview_only()?;
     let d = paths::config_dir().join("agents");
     let mut out = IndexMap::new();
     let mut keys: IndexMap<String, String> = IndexMap::new();
