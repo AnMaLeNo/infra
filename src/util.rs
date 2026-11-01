@@ -1,4 +1,5 @@
 //! Processus externes, fichiers privés, dotenv, horodatage et JSON « à la Python » (hash compatible).
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
@@ -27,6 +28,10 @@ impl Output {
         self.code == 0
     }
 }
+
+/// Quand stdout est réservé à une valeur à parser (`infra preview up … --url`), les sous-commandes
+/// non capturées (npm, docker compose…) écrivent sur stderr au lieu d'hériter de stdout.
+pub static STDOUT_RESERVED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Default)]
 pub struct Cmd<'a> {
@@ -83,6 +88,8 @@ impl<'a> Cmd<'a> {
         c.stdin(if self.input.is_some() { Stdio::piped() } else { Stdio::inherit() });
         if self.capture {
             c.stdout(Stdio::piped()).stderr(Stdio::piped());
+        } else if STDOUT_RESERVED.load(Ordering::Relaxed) {
+            c.stdout(Stdio::from(std::io::stderr()));
         }
         let mut child = c.spawn().map_err(|e| CmdError(format!("impossible de lancer {} : {e}", words[0])))?;
         if let Some(inp) = self.input {

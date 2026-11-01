@@ -526,10 +526,16 @@ pub fn run(cli: Cli) -> Result<i32> {
         Command::Preview(p) => {
             match p {
                 PreviewCmd::Up(r) => {
+                    if r.url {
+                        crate::util::STDOUT_RESERVED.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
                     let res = previews::up(&target(&r.name, Some(r.pr))?)?;
                     if r.url { println!("{}", res["url"].as_str().unwrap_or("")) } else { out(&res) }
                 }
                 PreviewCmd::Down(r) => {
+                    if r.url {
+                        crate::util::STDOUT_RESERVED.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
                     previews::down(&target(&r.name, Some(r.pr))?)?;
                     println!("{}", if r.url { "" } else { "supprimée" });
                 }

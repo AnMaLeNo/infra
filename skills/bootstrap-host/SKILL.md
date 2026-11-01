@@ -10,7 +10,7 @@ Repo de config cloné avec `--recursive` en `/srv/infra` ; clé age privée disp
 
 ## État cible (dans l'ordre naturel des dépendances)
 1. `sudo /srv/infra/tool/install.sh` passé : `infra --version`, `id ai-infra`, `systemctl is-enabled infra-runner`.
-2. `/srv/infra/.age-key` présent (0400, `ai-infra`) et `infra secrets check` tout `ok`.
+2. `/srv/infra/.age-key` présent (0440, `ai-infra:infra` : les comptes agents du groupe `infra`, dont `ai-github` pour les previews, doivent pouvoir déchiffrer) et `infra secrets check` tout `ok`.
 3. `tailscale ip -4` = `host.yaml: tailscale_ip` (sinon corrige host.yaml).
 4. `infra stack up traefik` : réseau `traefik-net`, Traefik up, `curl -sk https://<tailscale_ip>/` → 404 Traefik.
 5. `infra dns bootstrap` : `A *.<private_zone> → <tailscale_ip>` ; `dig +short x.<private_zone>` répond.
