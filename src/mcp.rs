@@ -102,7 +102,7 @@ pub static TOOLS: &[Tool] = &[
     },
     Tool {
         name: "dns_ensure",
-        description: "Crée/corrige les enregistrements DNS voulus pour le projet d'après `expose`/`previews` (CNAME vers le tunnel ou A vers l'IP publique ; wildcards previews) et supprime ceux devenus inutiles. Retourne ok|created|updated|deleted|conflict par nom. `conflict` = un enregistrement existe avec une autre cible : vérifie avant de relancer avec force=True.",
+        description: "Crée/corrige les enregistrements DNS voulus pour le projet d'après `expose`/`previews` (CNAME vers le tunnel ou A vers l'IP publique ; wildcard des previews privées ; les previews publiques ont un CNAME par PR posé par `infra preview up`) et supprime ceux devenus inutiles. Retourne ok|created|updated|deleted|conflict par nom. `conflict` = un enregistrement existe avec une autre cible : vérifie avant de relancer avec force=True.",
         schema: || obj(json!({"project": {"type": "string"}, "force": {"type": "boolean", "default": false}}), &["project"]),
         call: |a| tools::dns_ensure(arg_str(a, "project")?, arg_bool(a, "force")),
     },

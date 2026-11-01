@@ -13,7 +13,11 @@ fn wanted() {
     let recs = wanted_records("site-client", &reg.projects["site-client"], &h).unwrap();
     let cname = |n: &str| (n.to_string(), "CNAME".to_string(), "abc.cfargotunnel.com".to_string(), true);
     assert!(recs.contains(&cname("naturo.antoine42.com")));
-    assert!(recs.contains(&cname("*.naturo.antoine42.com")));
+    assert!(!recs.iter().any(|r| r.0.starts_with("*.") && r.0.ends_with("antoine42.com") && !r.0.contains(".pi.")), "pas de wildcard public : {recs:?}");
+    let t = infra::render::Target::new("site-client", reg.projects["site-client"].clone(), h.clone(), Some(7));
+    assert_eq!(infra::dns::preview_name(&t).as_deref(), Some("pr-7-naturo.antoine42.com"));
+    let t0 = infra::render::Target::new("site-client", reg.projects["site-client"].clone(), h.clone(), None);
+    assert_eq!(infra::dns::preview_name(&t0), None);
     assert!(wanted_records("fan-controller", &reg.projects["fan-controller"], &h).unwrap().is_empty());
     assert!(project_names("fan-controller", &reg.projects["fan-controller"], &h).contains(&"fan-controller.antoine42.com".to_string()));
 }
