@@ -118,6 +118,8 @@ name: preview
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
+# requis : le workflow appelé poste un commentaire sur la PR (le GITHUB_TOKEN par défaut est en lecture seule)
+permissions: {{ contents: read, pull-requests: write }}
 jobs:
   preview:
     uses: AnMaLeNo/infra/.github/workflows/preview.yml@main

@@ -31,7 +31,7 @@ jobs:
         id: deploy
         run: |
           ACTION=up; [ "${{ github.event.action }}" = "closed" ] && ACTION=down
-          URL=$(ssh ai-github@${{ secrets.INFRA_HOST }} infra preview $ACTION ${{ inputs.project }} ${{ github.event.pull_request.number }} --url)
+          URL=$(ssh ai-github@${{ secrets.INFRA_HOST }} infra preview $ACTION ${{ inputs.project }} ${{ github.event.pull_request.number }} --url | tail -n1)
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"; echo "url=$URL" >> "$GITHUB_OUTPUT"
       - uses: marocchino/sticky-pull-request-comment@v2
         with:
