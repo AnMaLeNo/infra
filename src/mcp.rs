@@ -184,7 +184,11 @@ pub fn call_tool(name: &str, args: &Map<String, Value>) -> Value {
         return json!({"content": [{"type": "text", "text": format!("tool inconnu : {name}")}], "isError": true});
     };
     match (t.call)(args) {
-        Ok(v) => json!({"content": [{"type": "text", "text": serde_json::to_string(&v).unwrap_or_default()}], "structuredContent": v, "isError": false}),
+        // structuredContent doit être un objet (le client MCP rejette un tableau : dns_list renvoyait une liste)
+        Ok(v) => {
+            let structured = if v.is_object() { v.clone() } else { json!({"result": v}) };
+            json!({"content": [{"type": "text", "text": serde_json::to_string(&v).unwrap_or_default()}], "structuredContent": structured, "isError": false})
+        }
         Err(e) => json!({"content": [{"type": "text", "text": format!("{e}")}], "isError": true}),
     }
 }
