@@ -118,3 +118,13 @@ fn observe_tool_records_for_card_and_lan_ip_is_a_list() {
     assert!(observations::add("x/y", "t", "observe", None, None).is_err());
     assert!(observations::add("catacombes", "   ", "observe", None, None).is_err());
 }
+
+#[test]
+fn mcp_structured_content_is_always_an_object() {
+    let _e = common::env();
+    let r = mcp::call_tool("skills_list", json!({}).as_object().unwrap());
+    assert_eq!(r["isError"], false, "{r}");
+    assert!(r["structuredContent"].is_object(), "{}", r["structuredContent"]);
+    let r = mcp::call_tool("host_info", json!({}).as_object().unwrap());
+    assert!(r["structuredContent"].is_object() && r["structuredContent"].get("result").is_none());
+}
