@@ -56,11 +56,14 @@ impl Target {
         config::domain_of(&self.name, &self.project)
     }
 
+    /// Preview publique sur un seul niveau (`pr-N-<domain>.<zone>`) : le certificat Universal SSL de
+    /// Cloudflare ne couvre pas `*.<domain>.<zone>`. En zone privée (Traefik + Let's Encrypt) : `pr-N.<domain>.<zone>`.
     pub fn fqdn(&self, zone: &str, domain: Option<&str>) -> String {
-        let base = format!("{}.{zone}", domain.unwrap_or(self.domain()));
+        let d = domain.unwrap_or(self.domain());
         match self.pr {
-            None => base,
-            Some(pr) => format!("pr-{pr}.{base}"),
+            None => format!("{d}.{zone}"),
+            Some(pr) if zone == self.host.public_zone => format!("pr-{pr}-{d}.{zone}"),
+            Some(pr) => format!("pr-{pr}.{d}.{zone}"),
         }
     }
 

@@ -4,6 +4,7 @@ use indexmap::IndexMap;
 use reqwest::blocking::{Client, Response};
 use serde_json::{json, Value};
 
+use crate::render::Target;
 use crate::models::{Host, Project};
 use crate::{config, secrets};
 
@@ -115,24 +116,27 @@ pub fn zone(cf: &Cf, h: &Host) -> Result<String> {
     if h.cloudflare.zone_id.is_empty() { cf.zone_id(&h.public_zone) } else { Ok(h.cloudflare.zone_id.clone()) }
 }
 
-/// (name, type, content, proxied) voulus pour un projet.
-pub fn wanted_records(name: &str, prj: &Project, h: &Host) -> Result<Vec<Record>> {
-    let d = config::domain_of(name, prj);
-    let pub_ = if h.public_ingress == "cloudflare-tunnel" {
+/// (type, content, proxied) d'un enregistrement public : CNAME vers le tunnel ou A vers l'IP publique.
+fn public_record(h: &Host) -> Result<(String, String, bool)> {
+    if h.public_ingress == "cloudflare-tunnel" {
         if h.cloudflare.tunnel_id.is_empty() {
             bail!("host.yaml: cloudflare.tunnel_id manquant (infra tunnel create)");
         }
-        ("CNAME".to_string(), format!("{}.cfargotunnel.com", h.cloudflare.tunnel_id), true)
+        Ok(("CNAME".to_string(), format!("{}.cfargotunnel.com", h.cloudflare.tunnel_id), true))
     } else {
-        ("A".to_string(), h.public_ip.clone().unwrap_or_default(), false)
-    };
+        Ok(("A".to_string(), h.public_ip.clone().unwrap_or_default(), false))
+    }
+}
+
+/// (name, type, content, proxied) voulus pour un projet. Les previews publiques n'ont pas de wildcard
+/// (Universal SSL ne couvre qu'un niveau) : leur CNAME `pr-N-<domain>.<zone>` est posé par `preview up`.
+pub fn wanted_records(name: &str, prj: &Project, h: &Host) -> Result<Vec<Record>> {
+    let d = config::domain_of(name, prj);
+    let pub_ = public_record(h)?;
     let p = |n: String| (n, pub_.0.clone(), pub_.1.clone(), pub_.2);
     let mut out = vec![];
     if prj.expose == "public" {
         out.push(p(format!("{d}.{}", h.public_zone)));
-    }
-    if prj.previews == "public" {
-        out.push(p(format!("*.{d}.{}", h.public_zone)));
     }
     if prj.previews == "private" {
         out.push((format!("*.{d}.{}", h.private_zone), "A".into(), h.tailscale_ip.clone(), false));
@@ -152,6 +156,41 @@ pub fn project_names(name: &str, prj: &Project, h: &Host) -> Vec<String> {
     v
 }
 
+/// Noms `pr-N-<domain>.<public_zone>` existants chez Cloudflare pour ce projet.
+fn preview_names(cf: &Cf, zid: &str, name: &str, prj: &Project, h: &Host) -> Result<Vec<String>> {
+    let suffix = format!("-{}.{}", config::domain_of(name, prj), h.public_zone);
+    let mut v: Vec<String> = cf
+        .records(zid)?
+        .iter()
+        .filter_map(|r| r.get("name").and_then(Value::as_str))
+        .filter(|n| n.starts_with("pr-") && n.ends_with(&suffix) && n[3..n.len() - suffix.len()].chars().all(|c| c.is_ascii_digit()))
+        .map(str::to_string)
+        .collect();
+    v.sort();
+    v.dedup();
+    Ok(v)
+}
+
+/// CNAME/A public d'une preview (`previews: public` seulement).
+pub fn preview_name(t: &Target) -> Option<String> {
+    (t.pr.is_some() && t.project.previews == "public").then(|| t.public_fqdn())
+}
+
+pub fn ensure_preview(t: &Target) -> Result<Option<String>> {
+    let Some(n) = preview_name(t) else { return Ok(None) };
+    let cf = Cf::new(None)?;
+    let zid = zone(&cf, &t.host)?;
+    let (ty, content, proxied) = public_record(&t.host)?;
+    Ok(Some(cf.ensure(&zid, &n, &ty, &content, proxied, true)?))
+}
+
+pub fn prune_preview(t: &Target) -> Result<usize> {
+    let Some(n) = preview_name(t) else { return Ok(0) };
+    let cf = Cf::new(None)?;
+    let zid = zone(&cf, &t.host)?;
+    cf.delete_name(&zid, &n)
+}
+
 pub fn ensure_project(name: &str, prj: &Project, h: &Host, force: bool) -> Result<IndexMap<String, String>> {
     let cf = Cf::new(None)?;
     let zid = zone(&cf, h)?;
@@ -160,8 +199,12 @@ pub fn ensure_project(name: &str, prj: &Project, h: &Host, force: bool) -> Resul
     for (n, t, c, p) in &wanted {
         result.insert(n.clone(), cf.ensure(&zid, n, t, c, *p, force)?);
     }
-    // supprime ce qui n'est plus voulu (ex. previews désactivées)
-    for n in project_names(name, prj, h) {
+    // supprime ce qui n'est plus voulu (ex. previews désactivées, ancien wildcard public)
+    let mut stale = project_names(name, prj, h);
+    if prj.previews != "public" {
+        stale.extend(preview_names(&cf, &zid, name, prj, h)?);
+    }
+    for n in stale {
         if !wanted.iter().any(|w| w.0 == n) && cf.delete_name(&zid, &n)? > 0 {
             result.insert(n, "deleted".into());
         }
@@ -173,8 +216,9 @@ pub fn prune_project(name: &str, prj: &Project, h: &Host, public_only: bool) -> 
     let cf = Cf::new(None)?;
     let zid = zone(&cf, h)?;
     let mut names = project_names(name, prj, h);
+    names.extend(preview_names(&cf, &zid, name, prj, h)?);
     if public_only {
-        names.retain(|n| n.ends_with(&h.public_zone) && !n.starts_with("*."));
+        names.retain(|n| n.ends_with(&h.public_zone) && !n.starts_with("*.") && !n.starts_with("pr-"));
     }
     let mut out = IndexMap::new();
     for n in names {

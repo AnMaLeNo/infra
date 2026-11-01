@@ -9,7 +9,7 @@ use regex::Regex;
 use serde_json::{json, Value};
 
 use crate::render::{render, Target};
-use crate::{compose, config, paths};
+use crate::{compose, config, dns, paths};
 
 struct Lock(File);
 
@@ -51,6 +51,7 @@ pub fn up(t: &Target) -> Result<Value> {
         let commit = compose::fetch(t)?;
         render(t)?;
         compose::up(t)?;
+        dns::ensure_preview(t)?;
         let mut s = compose::status(t)?;
         s["commit"] = json!(commit);
         s
@@ -61,6 +62,9 @@ pub fn up(t: &Target) -> Result<Value> {
 pub fn down(t: &Target) -> Result<()> {
     let _l = lock(t)?;
     compose::down(t, true)?;
+    if let Err(e) = dns::prune_preview(t) {
+        eprintln!("avertissement : DNS de la preview non supprimé : {e}");
+    }
     let _ = fs::remove_dir_all(t.dir());
     let _ = fs::remove_dir_all(paths::data_dir().join(t.compose_project()));
     Ok(())

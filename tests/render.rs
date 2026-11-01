@@ -69,10 +69,11 @@ fn preview_target() {
     let (h, reg) = (config::host().unwrap(), config::registry().unwrap());
     let t = Target::new("site-client", reg.projects["site-client"].clone(), h, Some(12));
     assert_eq!(t.compose_project(), "site-client-pr-12");
-    assert_eq!(t.public_fqdn(), "pr-12.naturo.antoine42.com");
+    assert_eq!(t.public_fqdn(), "pr-12-naturo.antoine42.com");
+    assert_eq!(t.private_fqdn(), "pr-12.naturo.pi.antoine42.com");
     assert!(traefik_labels(&t)
         .unwrap()
-        .contains(&"traefik.http.routers.site-client-pr-12-public.rule=Host(`pr-12.naturo.antoine42.com`)".to_string()));
+        .contains(&"traefik.http.routers.site-client-pr-12-public.rule=Host(`pr-12-naturo.antoine42.com`)".to_string()));
 }
 
 #[test]
