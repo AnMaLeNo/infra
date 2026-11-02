@@ -211,8 +211,8 @@ impl Project {
             }
         }
         if let Some(d) = &self.domain {
-            if !one_label(d) {
-                bail!("domain doit être un seul label [a-z0-9-]");
+            if d != "@" && !one_label(d) {
+                bail!("domain doit être un seul label [a-z0-9-], ou \"@\" pour la racine de la zone");
             }
         }
         Ok(())

@@ -136,9 +136,9 @@ pub fn wanted_records(name: &str, prj: &Project, h: &Host) -> Result<Vec<Record>
     let p = |n: String| (n, pub_.0.clone(), pub_.1.clone(), pub_.2);
     let mut out = vec![];
     if prj.expose == "public" {
-        out.push(p(format!("{d}.{}", h.public_zone)));
+        out.push(p(config::host_in_zone(d, &h.public_zone)));
     }
-    if prj.previews == "private" {
+    if prj.previews == "private" && d != "@" {
         out.push((format!("*.{d}.{}", h.private_zone), "A".into(), h.tailscale_ip.clone(), false));
     }
     for (label, exp) in &prj.entries {
@@ -151,14 +151,19 @@ pub fn wanted_records(name: &str, prj: &Project, h: &Host) -> Result<Vec<Record>
 
 pub fn project_names(name: &str, prj: &Project, h: &Host) -> Vec<String> {
     let d = config::domain_of(name, prj);
-    let mut v = vec![format!("{d}.{}", h.public_zone), format!("*.{d}.{}", h.public_zone), format!("*.{d}.{}", h.private_zone)];
+    let mut v = vec![config::host_in_zone(d, &h.public_zone)];
+    if d != "@" {
+        v.push(format!("*.{d}.{}", h.public_zone));
+        v.push(format!("*.{d}.{}", h.private_zone));
+    }
     v.extend(prj.entries.keys().map(|l| format!("{l}.{}", h.public_zone)));
     v
 }
 
 /// Noms `pr-N-<domain>.<public_zone>` existants chez Cloudflare pour ce projet.
 fn preview_names(cf: &Cf, zid: &str, name: &str, prj: &Project, h: &Host) -> Result<Vec<String>> {
-    let suffix = format!("-{}.{}", config::domain_of(name, prj), h.public_zone);
+    let d = config::domain_of(name, prj);
+    let suffix = if d == "@" { format!(".{}", h.public_zone) } else { format!("-{d}.{}", h.public_zone) };
     let mut v: Vec<String> = cf
         .records(zid)?
         .iter()

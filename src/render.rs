@@ -61,7 +61,8 @@ impl Target {
     pub fn fqdn(&self, zone: &str, domain: Option<&str>) -> String {
         let d = domain.unwrap_or(self.domain());
         match self.pr {
-            None => format!("{d}.{zone}"),
+            None => config::host_in_zone(d, zone),
+            Some(pr) if d == "@" => format!("pr-{pr}.{zone}"),
             Some(pr) if zone == self.host.public_zone => format!("pr-{pr}-{d}.{zone}"),
             Some(pr) => format!("pr-{pr}.{d}.{zone}"),
         }
