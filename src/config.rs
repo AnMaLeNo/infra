@@ -136,12 +136,17 @@ pub fn domain_of<'a>(name: &'a str, prj: &'a Project) -> &'a str {
     prj.domain.as_deref().unwrap_or(name)
 }
 
+/// `<domain>.<zone>`, ou la zone elle-même quand `domain: "@"` (racine).
+pub fn host_in_zone(domain: &str, zone: &str) -> String {
+    if domain == "@" { zone.to_string() } else { format!("{domain}.{zone}") }
+}
+
 pub fn private_host(name: &str, prj: &Project, h: &Host) -> String {
-    format!("{}.{}", domain_of(name, prj), h.private_zone)
+    host_in_zone(domain_of(name, prj), &h.private_zone)
 }
 
 pub fn public_host(name: &str, prj: &Project, h: &Host) -> String {
-    format!("{}.{}", domain_of(name, prj), h.public_zone)
+    host_in_zone(domain_of(name, prj), &h.public_zone)
 }
 
 // ---- services partagés (shared.yaml) ----

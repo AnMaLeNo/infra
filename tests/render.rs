@@ -179,3 +179,22 @@ fn entries_validation() {
     assert!(!intent.contains_key("entry_ports") && !intent.contains_key("pr_proposed") && intent.contains_key("entries"));
     assert_eq!(Value::Object(p.decided()), json!({"entry_ports": {"ok": 1}, "pr_proposed": "https://github.com/x/y/pull/1"}));
 }
+
+#[test]
+fn apex_domain() {
+    let _e = common::env();
+    let h = infra::config::host().unwrap();
+    let mut prj = infra::config::registry().unwrap().projects["site-client"].clone();
+    prj.domain = Some("@".into());
+    prj.validate().unwrap();
+    let t = infra::render::Target::new("site-client", prj.clone(), h.clone(), None);
+    assert_eq!(t.public_fqdn(), "antoine42.com");
+    assert_eq!(t.private_fqdn(), "pi.antoine42.com");
+    let tp = infra::render::Target::new("site-client", prj.clone(), h.clone(), Some(4));
+    assert_eq!(tp.public_fqdn(), "pr-4.antoine42.com");
+    let mut h2 = h.clone();
+    h2.cloudflare.tunnel_id = "abc".into();
+    let recs = infra::dns::wanted_records("site-client", &prj, &h2).unwrap();
+    assert!(recs.iter().any(|r| r.0 == "antoine42.com"), "{recs:?}");
+    assert!(!recs.iter().any(|r| r.0.starts_with("*.")), "{recs:?}");
+}

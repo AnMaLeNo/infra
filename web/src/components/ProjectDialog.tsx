@@ -125,7 +125,7 @@ export function ProjectDialog({ name, view, sharedNames, onClose, onSaved }: {
             <option value="public">public (Internet)</option>
           </select>
         </Field>
-        <Field label="Domaine" hint="défaut : le nom du projet" changed={changed.has('domain')}>
+        <Field label="Domaine" hint="défaut : le nom du projet ; @ = racine de la zone (antoine42.com)" changed={changed.has('domain')}>
           <input type="text" value={f.domain} onChange={(e) => set('domain', e.target.value)} placeholder={target || 'nom'} />
         </Field>
         <Field label="Previews par PR" changed={changed.has('previews')} title="Déploiement par PR ouverte : public = pr-<N>-<domaine>.<zone>, private = pr-<N>.<domaine>.<zone privée> (workflow GitHub à ajouter : infra preview install)">
