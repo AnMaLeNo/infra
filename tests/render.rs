@@ -186,7 +186,7 @@ fn apex_domain() {
     let h = infra::config::host().unwrap();
     let mut prj = infra::config::registry().unwrap().projects["site-client"].clone();
     prj.domain = Some("@".into());
-    prj.validate("site-client").unwrap();
+    prj.validate().unwrap();
     let t = infra::render::Target::new("site-client", prj.clone(), h.clone(), None);
     assert_eq!(t.public_fqdn(), "antoine42.com");
     assert_eq!(t.private_fqdn(), "pi.antoine42.com");
