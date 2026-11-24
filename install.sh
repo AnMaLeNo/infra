@@ -34,6 +34,13 @@ mkdir -p /srv/apps /srv/data /srv/stack /srv/shared "$CONFIG_DIR/runs" "$CONFIG_
 chgrp -R infra /srv/apps /srv/data /srv/stack /srv/shared "$CONFIG_DIR" 2>/dev/null || true
 chmod -R g+rwX /srv/apps /srv/data /srv/stack /srv/shared "$CONFIG_DIR/runs" "$CONFIG_DIR/shared"
 chmod g+s /srv/apps /srv/data /srv/stack /srv/shared "$CONFIG_DIR/runs" "$CONFIG_DIR/shared"
+# … sauf les fichiers que l'outil écrit en privé (stack.rs), que le chmod -R ci-dessus vient d'ouvrir au groupe.
+# Traefik refuse un acme.json qui n'est pas en 600 : il écarte alors le resolver `cf` au démarrage suivant
+# et sert son certificat par défaut sur toutes les routes privées.
+for f in /srv/stack/traefik/acme.json /srv/stack/*/.env; do
+  [ -f "$f" ] && chmod 600 "$f"
+done
+[ -f /srv/stack/cloudflared/credentials.json ] && chmod 400 /srv/stack/cloudflared/credentials.json
 # UI (conteneur, uid ai-infra) et runner écrivent la config et la file : groupe infra en écriture
 # (shared.yaml est créé ici s'il manque : l'UI ne peut pas créer de fichier dans $CONFIG_DIR, qui reste root)
 [ -f "$CONFIG_DIR/shared.yaml" ] || printf 'services: {}\n' > "$CONFIG_DIR/shared.yaml"
