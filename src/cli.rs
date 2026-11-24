@@ -124,7 +124,7 @@ pub enum Command {
     /// Previews par PR
     #[command(subcommand)]
     Preview(PreviewCmd),
-    /// Comptes agents IA
+    /// Comptes agents (agents/<nom>.pub)
     #[command(subcommand)]
     Agents(AgentsCmd),
 }
@@ -213,7 +213,7 @@ pub enum PreviewCmd {
 #[derive(Subcommand)]
 pub enum AgentsCmd {
     Sync {
-        /// verrouille les comptes ai-* sans clé
+        /// verrouille les comptes gérés (groupe infra-agents, ou ai-*) qui n'ont plus de clé
         #[arg(long)]
         prune: bool,
     },

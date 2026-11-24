@@ -17,9 +17,10 @@ Repo de config cloné avec `--recursive` en `/srv/infra` ; clé age privée disp
 6. Si `public_ingress: cloudflare-tunnel` : `infra tunnel create` (une fois ; écrit `tunnel_id` dans host.yaml et `secrets/cloudflared.json`) puis `infra stack up cloudflared` ; `docker logs infra-cloudflared` montre 4 `Registered tunnel connection`.
 7. `infra stack up ui` et `sudo systemctl enable --now infra-runner` ; `https://infra.<private_zone>` s'affiche depuis le tailnet.
 8. Stacks optionnelles de `host.yaml: stacks` (`infra stack up --all`).
-9. Services partagés (`shared.yaml`, déclarés dans le front) : un run chacun depuis la section « Services partagés » ; leurs données vont sous `/srv/shared/<nom>/data` (créé par install.sh, `root:infra` setgid).
-9. Commit de `host.yaml` + `secrets/cloudflared.json` dans le repo de config. Les projets du registre ne sont **pas** déployés à cette étape : rien ne se lance sans un clic sur « Lancer Claude » (ou `infra enqueue`), projet par projet — l'outil peut donc être installé à côté de services existants.
-10. `infra doctor` : tout `ok`.
+9. `sudo infra agents sync` : les comptes de `<config>/agents/` existent (skill `agent-account`) ; `ssh <nom>@<tailscale_ip> true` passe pour chacun.
+10. Services partagés (`shared.yaml`, déclarés dans le front) : un run chacun depuis la section « Services partagés » ; leurs données vont sous `/srv/shared/<nom>/data` (créé par install.sh, `root:infra` setgid).
+11. Commit de `host.yaml` + `secrets/cloudflared.json` dans le repo de config. Les projets du registre ne sont **pas** déployés à cette étape : rien ne se lance sans un clic sur « Lancer Claude » (ou `infra enqueue`), projet par projet — l'outil peut donc être installé à côté de services existants.
+12. `infra doctor` : tout `ok`.
 
 ## Pièges connus
 - Un wildcard DNS plus large (`*.<public_zone>`) qui pointe ailleurs rend les sous-domaines imprévisibles : signale-le.

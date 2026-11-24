@@ -1,1 +1,1 @@
-Une clé publique SSH par agent : `ai-<outil>.pub`. `infra agents sync` crée les comptes et régénère les `authorized_keys`. Voir `tool/skills/agent-account/SKILL.md`.
+Une clé publique SSH par agent : `<nom>.pub`, et au besoin `<nom>.yaml` avec `sudo: none | limited | full` (défaut `limited`). `infra agents sync` crée les comptes et régénère les `authorized_keys` et sudoers. Voir `tool/skills/agent-account/SKILL.md`.
