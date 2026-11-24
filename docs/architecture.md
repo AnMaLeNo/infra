@@ -136,9 +136,9 @@ Les `.env` ne sont jamais dans git en clair. Deux options :
 
 Secrets d'infra concernés : token/credentials du tunnel Cloudflare, token API Cloudflare (DNS edit + Tunnel edit — à créer, celui du VPS ne fait que DNS), clé Tailscale OAuth pour GitHub Actions, clé `age`.
 
-## 6. Comptes agents IA
+## 6. Comptes agents
 
-Règle : **un compte Unix par agent / par outil**, jamais partagé. Nom `ai-<outil>` (`ai-devin`, `ai-claude`…). Création par le skill `agent-account` :
+Règle : **un compte Unix par agent / par outil**, jamais partagé. Nom libre (`ai-<outil>` par usage), clé dans `agents/<nom>.pub`, niveau de sudo dans `agents/<nom>.yaml` ; les comptes gérés portent le groupe `infra-agents`. Création par le skill `agent-account` :
 - user sans mot de passe, clé SSH dans `hosts/<host>/agents/<nom>.pub` (le bootstrap régénère `authorized_keys` depuis le repo ⇒ révoquer = supprimer le fichier + PR),
 - groupe `docker` + groupe `deploy` (écriture sur `/srv/apps`, `/srv/data`),
 - `sudo` NOPASSWD **limité** à une liste (`systemctl`, `tailscale`, `apt`) + `log_output` sudoreplay comme aujourd'hui,

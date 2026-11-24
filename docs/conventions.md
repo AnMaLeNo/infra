@@ -63,7 +63,7 @@ Rendre un projet public = créer **un** CNAME. Le tunnel a une seule règle d'in
 
 - Projet : `[a-z0-9-]+`, en général le nom du repo en minuscules.
 - `domain` : un seul label (`catacombes`, pas `catacombes.antoine42.com`).
-- Compte agent IA : `ai-<outil>` (`ai-infra` pour le runner, `ai-devin`, `ai-claude`…). Un compte par agent, jamais partagé.
+- Compte agent : un fichier `agents/<nom>.pub` par agent (`[a-z_][a-z0-9_-]*` ; `ai-<outil>` reste l'usage pour les agents IA, `ai-infra` est réservé au runner). Un compte par agent, jamais partagé.
 
 ## Secrets
 
