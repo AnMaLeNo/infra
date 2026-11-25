@@ -1,7 +1,7 @@
 mod common;
 
 use infra::state::{self, Entry};
-use infra::{config, history};
+use infra::{config, history, secrets};
 use serde_json::{json, Value};
 
 fn fields(v: Value) -> serde_json::Map<String, Value> {
@@ -188,4 +188,16 @@ fn host_fields_the_entry_depends_on_mark_it_changed_and_rehash_recomputes() {
     assert_eq!(st2["catacombes"]["ok"], true);
     assert!(changed().is_empty(), "{:?}", changed());
     std::fs::write(&host_yaml, orig).unwrap();
+}
+
+#[test]
+fn secret_key_names_reject_pasted_values() {
+    for ok in ["GITHUB_TOKEN", "CF_API_TOKEN", "_x", "mqtt_host", "A1"] {
+        assert!(secrets::valid_key(ok), "{ok}");
+    }
+    // un token collé à la place du nom (93 caractères), une valeur avec `=`, un nom vide ou qui commence par un chiffre
+    let token = format!("github_pat_{}", "a".repeat(82));
+    for ko in [token.as_str(), "", "1ABC", "A-B", "A B", "A=B", "é"] {
+        assert!(!secrets::valid_key(ko), "{ko}");
+    }
 }

@@ -86,7 +86,24 @@ pub fn keys(rel: &str) -> Result<Vec<String>> {
     Ok(dotenv(rel)?.keys().cloned().collect())
 }
 
+/// Un nom de variable plausible : `[A-Za-z_][A-Za-z0-9_]*`, 64 caractères au plus. sops ne chiffre que les
+/// valeurs : un secret collé à la place du nom se retrouverait en clair dans le fichier, puis dans git.
+pub fn valid_key(k: &str) -> bool {
+    let mut chars = k.chars();
+    k.len() <= 64
+        && chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 pub fn set_values(rel: &str, values: &IndexMap<String, String>) -> Result<()> {
+    if let Some(k) = values.keys().find(|k| !valid_key(k)) {
+        // le nom refusé n'est pas répété en entier : c'est peut-être un secret
+        let debut: String = k.chars().take(8).collect();
+        return Err(anyhow!(
+            "« {debut}… » n'est pas un nom de variable (lettres, chiffres, _ ; 64 caractères au plus). \
+             Rien n'a été écrit. Le nom reste en clair dans le fichier : la valeur se donne après `=` ou sur stdin"
+        ));
+    }
     let mut env = if exists(rel) { dotenv(rel)? } else { IndexMap::new() };
     for (k, v) in values {
         env.insert(k.clone(), v.clone());
