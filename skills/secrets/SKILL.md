@@ -14,7 +14,7 @@ Tout secret vit chiffré dans `<config>/secrets/` (déchiffrable par la clé age
 | `secrets/projects/<P>.preview.env` | surcharges previews |
 
 ## Outils
-`infra secrets edit <rel>` (sops), `infra secrets set <rel> CLE=valeur` (ou `CLE` seule, valeur sur stdin), `infra secrets keys <rel>` / tool MCP `secrets_keys` (noms seulement), `env_decrypt` (écrit le `.env` d'un projet), `infra secrets rekey` après ajout d'un destinataire dans `.sops.yaml`.
+`infra secrets edit <rel>` (sops), `infra secrets set <rel> CLE=valeur` (ou `CLE` seule : la valeur est demandée, ou lue sur stdin ; à préférer pour un token, qui n'entre alors ni dans l'historique du shell ni dans `ps`), `infra secrets keys <rel>` / tool MCP `secrets_keys` (noms seulement), `env_decrypt` (écrit le `.env` d'un projet), `infra secrets rekey` après ajout d'un destinataire dans `.sops.yaml`.
 
 ## Ne pas faire
 - Écrire une valeur de secret dans `registry.yaml`, `host.yaml`, un override, un log, un commit, ou ta sortie.

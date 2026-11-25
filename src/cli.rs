@@ -1,5 +1,5 @@
 //! CLI `infra` : les opérations mécaniques et idempotentes. Voir skills/ pour l'usage.
-use std::io::BufRead;
+use std::io::{BufRead, IsTerminal};
 
 use anyhow::{anyhow, Result};
 use clap::{Args, Parser, Subcommand};
@@ -499,9 +499,20 @@ pub fn run(cli: Cli) -> Result<i32> {
                     match p.split_once('=') {
                         Some((k, v)) => values.insert(k.to_string(), v.to_string()),
                         None => {
+                            if !secrets::valid_key(p) {
+                                return Err(anyhow!("le dernier argument est le NOM de la variable (ex. GITHUB_TOKEN), pas sa valeur : rien n'a été écrit"));
+                            }
+                            // sans invite, la commande semble bloquée et on finit par coller la valeur au mauvais endroit
+                            if stdin.is_terminal() {
+                                eprint!("Valeur de {p} (colle-la puis Entrée) : ");
+                            }
                             let mut line = String::new();
                             stdin.lock().read_line(&mut line)?;
-                            values.insert(p.clone(), line.trim_end_matches('\n').to_string())
+                            let value = line.trim_end_matches(['\n', '\r']).to_string();
+                            if value.is_empty() {
+                                return Err(anyhow!("valeur vide pour {p} : rien n'a été écrit (pour une valeur vide voulue : {p}=)"));
+                            }
+                            values.insert(p.clone(), value)
                         }
                     };
                 }
